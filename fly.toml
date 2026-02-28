@@ -1,0 +1,52 @@
+# fly.toml - Tokens at Home Coordinator
+# Run `fly launch` to associate this with your Fly.io account,
+# then `fly deploy` to deploy.
+
+app = "tokens-at-home"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  DATABASE_URL = "/data/tah.db"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false   # keep alive so daemons can always poll
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 500
+    soft_limit = 400
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Persistent volume for SQLite
+[[mounts]]
+  source = "tah_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[[services.ports]]
+  port = 80
+  handlers = ["http"]
+  force_https = true
+
+[[services.ports]]
+  port = 443
+  handlers = ["tls", "http"]
+
+[services.http_checks]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "10s"
+  path = "/health"
