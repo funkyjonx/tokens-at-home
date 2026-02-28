@@ -3,21 +3,23 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _sqlite: Database.Database | null = null;
 
 export function getDb(url?: string) {
   if (_db) return _db;
   const dbUrl = url ?? process.env['DATABASE_URL'] ?? './tah.db';
-  const sqlite = new Database(dbUrl);
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
-  _db = drizzle(sqlite, { schema });
+  _sqlite = new Database(dbUrl);
+  _sqlite.pragma('journal_mode = WAL');
+  _sqlite.pragma('foreign_keys = ON');
+  _db = drizzle(_sqlite, { schema });
   return _db;
 }
 
 export type Db = ReturnType<typeof getDb>;
 
-export function initSchema(db: Db) {
-  const sqlite = (db as unknown as { session: { db: Database.Database } }).session.db;
+export function initSchema(_db: Db) {
+  const sqlite = _sqlite;
+  if (!sqlite) throw new Error('Call getDb() before initSchema()');
   // Run inline migrations for SQLite MVP (no migration files needed)
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS projects (
