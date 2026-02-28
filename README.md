@@ -27,6 +27,7 @@ npm install -g @tah/cli
 ### Register
 
 ```bash
+tah config coordinatorUrl https://tokens-at-home.fly.dev
 tah contributor register --username your-github-username --languages typescript,python
 # Saves your auth token to ~/.tokens-at-home/config.json
 ```
@@ -103,6 +104,7 @@ tah contributor available
 ```bash
 npm install -g @tah/cli
 
+tah config coordinatorUrl https://tokens-at-home.fly.dev
 tah contributor register --username your-github-username --languages typescript
 tah project register <owner> <repo> --languages typescript
 ```
