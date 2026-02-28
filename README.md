@@ -1,224 +1,156 @@
 # Tokens at Home
 
-> Folding@Home for LLM compute. Contributors pledge their unused Claude Pro/Max capacity to open source projects.
+> Folding@Home for LLM compute. Contribute your unused Claude Pro/Max capacity to open source.
 
-Claude Pro and Max subscribers have a monthly usage allowance most don't fully use. Tokens at Home is a marketplace where contributors pledge that unused capacity to open source projects — like Folding@Home, but for LLM compute.
+Claude Pro and Max subscribers have a monthly usage allowance most don't fully use. Tokens at Home is a marketplace where contributors pledge that unused capacity to open source projects.
 
-**Contributors** don't pick individual issues. They choose projects and set a budget. The coordinator matches them to issues that fit. Their machine does the work autonomously using Claude Code; they review the diff before it becomes a PR.
+**As a contributor**, you choose projects and set a budget. The coordinator matches you to issues that fit. Your machine does the work autonomously using Claude Code — you review the diff before anything becomes a PR.
 
-**Projects** label GitHub issues with `tah` to make them available. They receive PRs like any other contributor. Claude never has merge access.
-
----
-
-## How it works
-
-```
-Contributor                    Coordinator                    Project
-    |                              |                              |
-    |-- "I pledge 80% to react" ->|                              |
-    |                              |-- "contributor has ~80k      |
-    |                              |    tokens available" ------->|
-    |                              |                              |
-    |                              |<-- "assign issue #4821 ------|
-    |                              |     (est: 8k tokens)"        |
-    |                              |                              |
-    |<-- task: react/#4821 --------|                              |
-    |                              |                              |
-    | [clone, run claude -p, diff] |                              |
-    |                              |                              |
-    |-- PR submitted --------------|-----------> GitHub PR ------>|
-```
-
-1. Contributor registers, pledges a % of their budget to a project
-2. Coordinator matches issues to contributors based on language overlap, budget, and trust
-3. Contributor's daemon clones the repo, runs `claude -p` with tool restrictions
-4. Contributor reviews the diff (configurable — can auto-submit)
-5. `gh pr create` opens a PR. Maintainers review and merge as normal.
-
-API keys never leave the contributor's machine. The daemon invokes their local `claude` CLI directly.
+**As a project owner**, you label GitHub issues with `tah` to make them available. You receive PRs like from any other contributor. Claude never has merge access.
 
 ---
 
-## Packages
-
-This is a pnpm monorepo with four packages:
-
-| Package | Description |
-|---------|-------------|
-| [`@tah/shared`](packages/shared) | Types, Zod schemas, prompt templates |
-| [`@tah/coordinator`](packages/coordinator) | Hono HTTP server — registration, matching, task lifecycle |
-| [`@tah/daemon`](packages/daemon) | Long-running process — polls for tasks, runs Claude, creates PRs |
-| [`@tah/cli`](packages/cli) | `tah` CLI for project owners and contributors |
-
----
-
-## Getting started
+## For contributors
 
 ### Prerequisites
 
-- Node.js 22+
-- pnpm 9+
-- `claude` CLI installed and authenticated (`claude --version`)
-- `gh` CLI installed and authenticated (`gh auth status`)
+- Claude Pro or Max subscription with `claude` CLI installed ([install guide](https://claude.ai/claude-code))
+- `gh` CLI installed and authenticated ([install guide](https://cli.github.com))
+- Node.js 22+, pnpm 9+
 
 ### Install
 
 ```bash
-git clone https://github.com/funkyjonx/tokens-at-home
-cd tokens-at-home
-pnpm install
-pnpm build
+npm install -g @tah/cli
 ```
 
-### Run the coordinator
+### Register
 
 ```bash
-cd packages/coordinator
-pnpm dev
-# Listening on http://localhost:3000
+tah contributor register --username your-github-username --languages typescript,python
+# Saves your auth token to ~/.tokens-at-home/config.json
 ```
 
-The coordinator creates `tah.db` (SQLite) on first run. No migrations needed.
-
-### Register as a contributor
+### Pledge capacity to a project
 
 ```bash
-# Point the CLI at your coordinator
-tah config coordinatorUrl http://localhost:3000
+# Browse available projects
+tah project list
 
-# Register (saves auth token to ~/.tokens-at-home/config.json)
-tah contributor register --username yourname --languages typescript,python
+# Pledge 80% of your remaining budget to a project
+tah contributor pledge <project-id> 80
 ```
 
-### Register a project
+You can pledge to multiple projects with split budgets. The coordinator picks issues that fit your budget — you won't be assigned something you can't cover.
 
-```bash
-tah project register <owner> <repo> --languages typescript
-```
-
-Then label GitHub issues with `tah` to make them available, and register them:
-
-```bash
-tah project issue add <project-id> <issue-number> "Fix the login bug" --complexity small
-```
-
-### Assign a task (MVP — manual)
-
-```bash
-tah task assign <issue-id> <contributor-id>
-```
-
-### Start the daemon
+### Start contributing
 
 ```bash
 tah daemon start
-# Daemon started (PID 12345)
-# Logs: ~/.tokens-at-home/logs/
 ```
 
-The daemon polls for tasks every 30 seconds, clones the repo, runs Claude, and prompts you to review the diff before opening a PR.
+That's it. The daemon polls for tasks, clones repos to `~/.tokens-at-home/work/`, and runs Claude on each issue. By default you'll be shown the diff and asked to approve before any PR is submitted.
+
+```
+Task received: facebook/react#4821 — Fix useEffect cleanup on unmount
+
+--- a/src/hooks/useEffect.js
++++ b/src/hooks/useEffect.js
+@@ -42,6 +42,9 @@ function commitHookEffectListMount(...
+
+Submit PR? [y/N]
+```
+
+### Contributor CLI
+
+```
+tah contributor register          Register your profile
+tah contributor profile           Show your profile and trust score
+tah contributor pledge <id> <pct> Pledge % of budget to a project
+tah contributor pledges           List your active pledges
+tah contributor available         Mark yourself available for tasks
+tah contributor unavailable       Pause task assignment
+
+tah daemon start                  Start the daemon in background
+tah daemon stop                   Stop the daemon
+tah daemon status                 Check if it's running
+```
+
+### How your capacity is used
+
+There's no API to read your remaining Claude allowance, so you self-report by setting a budget percentage when you pledge. The coordinator tracks tokens consumed per task (from Claude's usage output) and deducts from your stated budget. When your budget runs low, set yourself unavailable until your cycle resets:
+
+```bash
+tah contributor unavailable
+# ... billing cycle resets ...
+tah contributor available
+```
+
+### Safety
+
+- **Your API key never leaves your machine.** The daemon calls your local `claude` binary — it never touches your credentials.
+- **Work is sandboxed.** Each task runs in `~/.tokens-at-home/work/<task-id>/`. Claude is restricted to git, npm, and file operations. No arbitrary shell access.
+- **You review before anything is submitted.** The default `review_before_pr` mode shows you a diff and waits for your approval.
+- **Kill switch.** `tah daemon stop` terminates immediately.
+- **Everything is logged.** Full session logs at `~/.tokens-at-home/logs/`.
 
 ---
 
-## CLI reference
+## For project owners
 
-```
-tah project register <owner> <repo>        Register a GitHub repo as a project
-tah project issue add <id> <n> <title>     Make an issue available
-tah project issues <id>                    List issues for a project
+### Register your project
 
-tah contributor register                   Register as a contributor
-tah contributor pledge <project-id> <pct>  Pledge % of budget to a project
-tah contributor available                  Mark yourself available
-tah contributor profile                    Show your profile
+```bash
+npm install -g @tah/cli
 
-tah task assign <issue-id> <contrib-id>    Manually assign (MVP)
-tah task list                              List all tasks
-
-tah daemon start                           Start daemon in background
-tah daemon stop                            Stop daemon
-tah daemon status                          Check if daemon is running
+tah contributor register --username your-github-username --languages typescript
+tah project register <owner> <repo> --languages typescript
 ```
 
----
+### Make issues available
 
-## Sandbox & safety
+Label GitHub issues with `tah`, then register them:
 
-**Contributor protection**
-- API keys never leave your machine — the daemon calls your local `claude` binary
-- Work is isolated to `~/.tokens-at-home/work/<task-id>/`
-- Claude Code is restricted to `Bash(git *), Bash(npm *), Read, Edit, Write, Glob, Grep` — no arbitrary shell
-- All sessions logged to `~/.tokens-at-home/logs/`
-- `review_before_pr` mode (default) shows you the diff before any PR is created
-- Kill switch: `tah daemon stop`
-
-**Project protection**
-- All work submitted as PRs — maintainers review before merge
-- Trust scores (Phase 2): new contributors get trivial/small issues only
-- Projects choose eligible issues via labels
-
----
-
-## Architecture
-
-### Coordination protocol
-
-Polling, not WebSockets. The daemon calls `GET /tasks/next` every 30s. Simple and resilient.
-
-```
-Daemon                         Coordinator
-  |-- GET /tasks/next ---------->|  (every 30s)
-  |<-- 200 {task} or 204 --------|
-  |                               |
-  |-- POST /tasks/:id/heartbeat ->|  (every 60s while working)
-  |-- POST /tasks/:id/complete -->|  (PR URL + tokens used)
-  |-- POST /tasks/:id/fail ------>|  (error details)
+```bash
+tah project issue add <project-id> <issue-number> "Fix the login bug" \
+  --complexity small \
+  --type code
 ```
 
-Five missed heartbeats → task abandoned, issue returned to the pool.
+Complexity options: `trivial` (~2k tokens), `small` (~8k), `medium` (~25k), `large` (~80k). This determines which contributors can be matched to the issue based on their budget.
 
-### Prompt assembly
+### That's it
 
-Each task type gets a different prompt template (`packages/shared/src/prompts.ts`) and a different set of allowed tools. The prompt instructs Claude to stage changes but not commit — the daemon handles git commit and `gh pr create`.
+Contributors will be matched to your issues automatically. You'll receive PRs through GitHub as normal — review and merge (or close) like any other PR.
 
-### Database
+### Project CLI
 
-SQLite for MVP (zero ops). Drizzle ORM makes the PostgreSQL migration straightforward when needed.
+```
+tah project register <owner> <repo>             Register a repo
+tah project list                                 List registered projects
+tah project issue add <id> <n> <title>          Make an issue available
+tah project issues <id>                          List issues and their status
+```
 
 ---
 
 ## Roadmap
 
-**Phase 1 (current) — MVP**
-- [x] Project and contributor registration
-- [x] Manual task assignment
-- [x] Daemon: clone → claude -p → review → PR
-- [x] Task lifecycle (heartbeat, complete, fail)
+**Now**
+- Manual task assignment and basic matching
+- `code` task type (fix/implement issues)
+- Human review before PR submission
 
-**Phase 2 — Marketplace**
-- [ ] Automatic budget-aware matching
-- [ ] Pledge system with split budgets
-- [ ] Trust scores from merged PRs
-- [ ] GitHub webhook integration
-- [ ] All 5 task types (code, tests, docs, deps, review)
+**Coming soon**
+- Automatic budget-aware matching
+- Trust scores — new contributors get small issues, earn larger ones via merged PRs
+- More task types: `tests`, `docs`, `deps`, `review`
+- GitHub webhook integration for real-time issue sync
 
-**Phase 3 — Community**
-- [ ] Web dashboard and leaderboard
-- [ ] Project discovery
-- [ ] Container-based sandboxing
-- [ ] Notification system
-
----
-
-## Contributing
-
-```bash
-pnpm test        # run all tests (47 passing)
-pnpm typecheck   # TypeScript checks across all packages
-pnpm build       # build all packages
-```
-
-Tests are in each package under `src/**/*.test.ts`. The coordinator integration tests run against an in-memory SQLite database — no setup needed.
+**Later**
+- Web dashboard and contributor leaderboard
+- Project discovery
+- Container-based sandboxing
 
 ---
 
