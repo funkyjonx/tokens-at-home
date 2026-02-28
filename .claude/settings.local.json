@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm --filter @tah/shared test:*)",
+      "Bash(pnpm -r test:*)",
+      "Bash(pnpm --filter @tah/daemon test:*)",
+      "Bash(pnpm --filter @tah/shared build:*)",
+      "Bash(pnpm --filter @tah/coordinator test:*)",
+      "Bash(node:*)",
+      "Bash(npx vitest:*)",
+      "Bash(pnpm -r build:*)",
+      "Bash(pnpm --filter @tah/shared typecheck:*)",
+      "Bash(pnpm --filter @tah/coordinator typecheck:*)",
+      "Bash(pnpm --filter @tah/daemon typecheck:*)",
+      "Bash(pnpm --filter @tah/cli typecheck:*)",
+      "Bash(gh auth:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
