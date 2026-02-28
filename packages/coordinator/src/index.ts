@@ -1,3 +1,4 @@
+import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -34,9 +35,6 @@ setInterval(async () => {
   }
 }, 60_000);
 
-console.log(`TAH Coordinator listening on port ${PORT}`);
-
-export default {
-  port: PORT,
-  fetch: app.fetch,
-};
+serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, () => {
+  console.log(`TAH Coordinator listening on http://0.0.0.0:${PORT}`);
+});
