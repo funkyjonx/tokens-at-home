@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { loadConfig, requireAuth } from '../config.js';
 
@@ -82,16 +82,32 @@ export function daemonCommand(): Command {
       }
     });
 
+  cmd
+    .command('run')
+    .description('Run the daemon in the foreground (useful for testing)')
+    .action(async () => {
+      const config = loadConfig();
+      requireAuth(config);
+
+      const daemonBin = findDaemonBin();
+      const child = spawn(process.execPath, [daemonBin], {
+        stdio: 'inherit',
+        env: { ...process.env },
+      });
+
+      await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+    });
+
   return cmd;
 }
 
 function findDaemonBin(): string {
+  const thisDir = dirname(new URL(import.meta.url).pathname);
   const candidates = [
-    // Installed from workspace
-    join(
-      new URL(import.meta.url).pathname,
-      '../../../../daemon/dist/index.js',
-    ),
+    // Development: packages/cli/dist → packages/daemon/dist
+    join(thisDir, '../../daemon/dist/index.js'),
+    // Installed globally: node_modules/@tah/cli/dist → node_modules/@tah/daemon/dist
+    join(thisDir, '../../../@tah/daemon/dist/index.js'),
     // Running from monorepo root
     join(process.cwd(), 'packages', 'daemon', 'dist', 'index.js'),
   ];

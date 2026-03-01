@@ -75,10 +75,8 @@ export async function startDaemon(configPath?: string) {
           throw new Error(result.error ?? 'Execution failed');
         }
 
-        // Human review if required
-        const needsReview = project.claudeMd !== undefined
-          ? false // project-level autonomy handled by daemon config
-          : true; // default: review before PR
+        // Human review if required (default: review_before_pr)
+        const needsReview = (config.autonomy ?? 'review_before_pr') !== 'full';
 
         let approved = true;
         if (needsReview) {
@@ -98,6 +96,7 @@ export async function startDaemon(configPath?: string) {
           issue,
           project,
           result.claudeOutput.summary,
+          config.githubUsername ?? '',
         );
 
         // Report completion

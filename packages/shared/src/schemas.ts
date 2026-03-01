@@ -85,7 +85,9 @@ export const DaemonConfigSchema = z.object({
   contributorId: z.string().min(1),
   authToken: z.string().min(1),
   pollIntervalMs: z.number().int().min(5_000).default(30_000),
-  workDir: z.string().min(1),
-  logDir: z.string().min(1),
+  workDir: z.string().min(1).optional(),
+  logDir: z.string().min(1).optional(),
+  autonomy: ContributorAutonomySchema.optional(),
+  githubUsername: z.string().optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;

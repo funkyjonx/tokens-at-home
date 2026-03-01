@@ -11,8 +11,10 @@ export async function createPr(
   issue: Issue,
   project: Project,
   summary: string,
+  contributorUsername: string,
 ): Promise<PrResult> {
   const branchName = `tah/issue-${issue.githubNumber}`;
+  const upstreamRepo = `${project.githubOwner}/${project.githubRepo}`;
 
   // Stage all changes
   const addResult = spawnSync('git', ['add', '-A'], { cwd: repoPath, stdio: 'pipe' });
@@ -20,40 +22,78 @@ export async function createPr(
     throw new Error(`git add failed: ${addResult.stderr.toString()}`);
   }
 
-  // Check if there are any staged changes
+  // Bail early if nothing changed
   const statusResult = spawnSync('git', ['diff', '--cached', '--name-only'], {
     cwd: repoPath,
     stdio: 'pipe',
     encoding: 'utf-8',
   });
-  const changedFiles = statusResult.stdout.trim();
-
-  if (!changedFiles) {
+  if (!statusResult.stdout.trim()) {
     throw new Error('No changes to commit after task execution');
   }
 
   // Commit
-  const commitMsg = `fix(#${issue.githubNumber}): ${issue.title}\n\nResolved via Tokens at Home (task: ${task.id})\n\nCo-authored-by: Claude <noreply@anthropic.com>`;
+  const commitMsg = [
+    `fix(#${issue.githubNumber}): ${issue.title}`,
+    '',
+    `Resolved via Tokens at Home (task: ${task.id})`,
+    '',
+    'Co-authored-by: Claude <noreply@anthropic.com>',
+  ].join('\n');
+
   const commitResult = spawnSync('git', ['commit', '-m', commitMsg], {
     cwd: repoPath,
     stdio: 'pipe',
   });
-
   if (commitResult.status !== 0) {
     throw new Error(`git commit failed: ${commitResult.stderr.toString()}`);
   }
 
-  // Push
-  const pushResult = spawnSync('git', ['push', 'origin', branchName], {
-    cwd: repoPath,
-    stdio: 'pipe',
-  });
+  // Determine whether to push directly (owner) or via fork (contributor)
+  const isOwner = project.githubOwner.toLowerCase() === contributorUsername.toLowerCase();
 
-  if (pushResult.status !== 0) {
-    throw new Error(`git push failed: ${pushResult.stderr.toString()}`);
+  let prHead: string;
+
+  if (isOwner || !contributorUsername) {
+    // Contributor owns the repo — push directly to origin
+    const pushResult = spawnSync('git', ['push', 'origin', branchName], {
+      cwd: repoPath,
+      stdio: 'pipe',
+    });
+    if (pushResult.status !== 0) {
+      throw new Error(`git push failed: ${pushResult.stderr.toString()}`);
+    }
+    prHead = branchName;
+  } else {
+    // Fork-based flow for external contributions
+    //
+    // 1. Create (or reuse) a fork under the contributor's account
+    const forkResult = spawnSync(
+      'gh',
+      ['repo', 'fork', upstreamRepo, '--clone=false'],
+      { cwd: repoPath, stdio: 'pipe', encoding: 'utf-8' },
+    );
+    if (forkResult.status !== 0) {
+      throw new Error(`gh repo fork failed: ${forkResult.stderr}`);
+    }
+
+    // 2. Add fork remote (ignore error if it already exists)
+    const forkUrl = `https://github.com/${contributorUsername}/${project.githubRepo}.git`;
+    spawnSync('git', ['remote', 'add', 'fork', forkUrl], { cwd: repoPath, stdio: 'pipe' });
+
+    // 3. Push branch to fork
+    const pushResult = spawnSync('git', ['push', 'fork', branchName], {
+      cwd: repoPath,
+      stdio: 'pipe',
+    });
+    if (pushResult.status !== 0) {
+      throw new Error(`git push to fork failed: ${pushResult.stderr.toString()}`);
+    }
+
+    prHead = `${contributorUsername}:${branchName}`;
   }
 
-  // Create PR via gh CLI
+  // Create PR against the upstream repo
   const prBody = [
     `Closes #${issue.githubNumber}`,
     '',
@@ -61,7 +101,7 @@ export async function createPr(
     summary,
     '',
     '---',
-    '_This PR was created autonomously by [Tokens at Home](https://github.com/tokens-at-home)._',
+    '_This PR was created autonomously by [Tokens at Home](https://github.com/funkyjonx/tokens-at-home)._',
     '_A human contributor reviewed the changes before submission._',
   ].join('\n');
 
@@ -69,10 +109,10 @@ export async function createPr(
     'gh',
     [
       'pr', 'create',
-      '--repo', `${project.githubOwner}/${project.githubRepo}`,
+      '--repo', upstreamRepo,
       '--title', `fix(#${issue.githubNumber}): ${issue.title}`,
       '--body', prBody,
-      '--head', branchName,
+      '--head', prHead,
     ],
     { cwd: repoPath, stdio: 'pipe', encoding: 'utf-8' },
   );
@@ -81,6 +121,5 @@ export async function createPr(
     throw new Error(`gh pr create failed: ${ghResult.stderr}`);
   }
 
-  const prUrl = ghResult.stdout.trim();
-  return { prUrl };
+  return { prUrl: ghResult.stdout.trim() };
 }

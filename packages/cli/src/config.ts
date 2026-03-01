@@ -12,6 +12,8 @@ export interface CliConfig {
   pollIntervalMs?: number;
   workDir?: string;
   logDir?: string;
+  autonomy?: 'full' | 'review_before_pr';
+  githubUsername?: string;
 }
 
 export const DEFAULT_COORDINATOR_URL = process.env['TAH_COORDINATOR_URL'] ?? 'http://localhost:3000';

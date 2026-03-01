@@ -12,6 +12,7 @@ import {
   getContributorFromToken,
   extractBearerToken,
 } from '../services/auth.js';
+import { findMatchForContributor } from '../services/matching.js';
 
 // Heartbeats: 5 missed = task abandoned
 const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1_000; // 5 min (5 × 60s interval)
@@ -61,14 +62,17 @@ export function taskRoutes(db: Db) {
     return c.json(task, 201);
   });
 
-  // Get next task for calling contributor (daemon polling endpoint)
+  // Get next task for calling contributor (daemon polling endpoint).
+  // Returns an existing dispatched task if one exists; otherwise auto-matches
+  // from the contributor's pledges and creates a new task on the spot.
   app.get('/next', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
 
-    const task = await db
+    // 1. Check for an already-dispatched task
+    let task = await db
       .select()
       .from(tasks)
       .where(
@@ -78,6 +82,31 @@ export function taskRoutes(db: Db) {
         ),
       )
       .get();
+
+    // 2. No queued task — try auto-matching
+    if (!task) {
+      const match = await findMatchForContributor(db, contributor.id);
+      if (match) {
+        const taskId = randomBytes(8).toString('hex');
+        const now = new Date().toISOString();
+
+        await db.insert(tasks).values({
+          id: taskId,
+          issueId: match.issueId,
+          contributorId: contributor.id,
+          pledgeId: match.pledgeId,
+          status: 'dispatched',
+          lastHeartbeatAt: now,
+        });
+
+        await db
+          .update(issues)
+          .set({ status: 'assigned', updatedAt: now })
+          .where(eq(issues.id, match.issueId));
+
+        task = await db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+      }
+    }
 
     if (!task) return c.body(null, 204);
 

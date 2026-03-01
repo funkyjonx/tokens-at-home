@@ -58,17 +58,20 @@ export function projectCommand(): Command {
       }
     });
 
-  cmd
-    .command('issue add')
+  // 'tah project issue add' and 'tah project issue list'
+  const issueCmd = new Command('issue').description('Manage project issues');
+
+  issueCmd
+    .command('add')
     .description('Register an issue as available for contributors')
     .argument('<project-id>', 'Project ID')
     .argument('<issue-number>', 'GitHub issue number')
     .argument('<title>', 'Issue title')
-    .option('--complexity <c>', 'trivial | small | medium | large', 'small')
+    .option('--complexity <c>', 'trivial | small | medium | large (inferred from GitHub labels if omitted)')
     .option('--type <t>', 'code | tests | docs | deps | review', 'code')
     .option('--body <body>', 'Issue body text', '')
     .action(async (projectId: string, issueNumber: string, title: string, opts: {
-      complexity: string;
+      complexity?: string;
       type: string;
       body: string;
     }) => {
@@ -76,22 +79,47 @@ export function projectCommand(): Command {
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
 
-      const issue = await api.post<Issue>(`/projects/${projectId}/issues`, {
+      const payload: Record<string, unknown> = {
         githubNumber: parseInt(issueNumber, 10),
         title,
         body: opts.body,
         taskType: opts.type,
-        estimatedComplexity: opts.complexity,
-      });
+      };
+      // Only send complexity if explicitly provided; otherwise coordinator infers from GitHub labels
+      if (opts.complexity) payload['estimatedComplexity'] = opts.complexity;
+
+      const issue = await api.post<Issue>(`/projects/${projectId}/issues`, payload);
 
       console.log(`Issue registered: ${issue.id}`);
       console.log(`  #${issue.githubNumber}: ${issue.title}`);
       console.log(`  Complexity: ${issue.estimatedComplexity} (~${issue.estimatedTokens.toLocaleString()} tokens)`);
     });
 
+  issueCmd
+    .command('list')
+    .description('List issues for a project')
+    .argument('<project-id>', 'Project ID')
+    .action(async (projectId: string) => {
+      const config = loadConfig();
+      const api = new TahApiClient(config.coordinatorUrl);
+      const issues = await api.get<Issue[]>(`/projects/${projectId}/issues`);
+
+      if (issues.length === 0) {
+        console.log('No issues.');
+        return;
+      }
+
+      for (const i of issues) {
+        console.log(`[${i.id}] #${i.githubNumber} ${i.title} — ${i.status} (${i.estimatedComplexity})`);
+      }
+    });
+
+  cmd.addCommand(issueCmd);
+
+  // Keep 'tah project issues' as a shorthand alias
   cmd
     .command('issues')
-    .description('List issues for a project')
+    .description('List issues for a project (alias for "issue list")')
     .argument('<project-id>', 'Project ID')
     .action(async (projectId: string) => {
       const config = loadConfig();

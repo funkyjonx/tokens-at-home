@@ -86,18 +86,17 @@ export async function executeTask(
   writeFileSync(promptFile, prompt, 'utf-8');
   log(sandbox.logFile, `Prompt written (${prompt.length} chars)`);
 
-  // Invoke claude -p
+  // Invoke claude -p with direct args (no shell interpolation)
   const allowedTools = formatAllowedTools(sandbox.allowedTools);
-  const claudeCmd = [
-    'claude',
-    '--output-format', 'json',
-    '--allowedTools', `"${allowedTools}"`,
-    '-p', `"$(cat ${promptFile})"`,
-  ].join(' ');
+  const promptContent = readFileSync(promptFile, 'utf-8');
 
   log(sandbox.logFile, `Invoking: claude --output-format json --allowedTools "..." -p "..."`);
 
-  const claudeResult = run(claudeCmd, repoPath);
+  const claudeResult = spawnSync(
+    'claude',
+    ['--output-format', 'json', '--allowedTools', allowedTools, '-p', promptContent],
+    { cwd: repoPath, stdio: 'pipe', encoding: 'buffer', timeout: 10 * 60 * 1000 },
+  );
   const rawOutput = claudeResult.stdout.toString();
   const exitCode = claudeResult.status ?? 1;
 

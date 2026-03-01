@@ -50,6 +50,8 @@ export function contributorCommand(): Command {
         coordinatorUrl: opts.coordinator,
         contributorId: result.contributor.id,
         authToken: result.token,
+        autonomy: opts.autonomy as 'full' | 'review_before_pr',
+        githubUsername: result.contributor.githubUsername,
       });
 
       console.log(`Registered as contributor: ${result.contributor.githubUsername}`);

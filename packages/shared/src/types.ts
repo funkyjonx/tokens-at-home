@@ -31,6 +31,31 @@ export const COMPLEXITY_TOKEN_ESTIMATES: Record<IssueComplexity, number> = {
   large: 80_000,
 };
 
+// Map GitHub issue label names to a complexity tier.
+// Returns null if no recognizable label is found.
+export function mapGitHubLabelsToComplexity(labels: string[]): IssueComplexity | null {
+  for (const label of labels) {
+    const l = label.toLowerCase().trim();
+
+    // trivial: good first issue variants, XS size labels
+    if (/good.first.(issue|contribution)|beginner|starter|first-timer/.test(l)) return 'trivial';
+    if (/^(size[/:_\s-]+)?x-?s(mall)?$/.test(l)) return 'trivial';
+
+    // small: S size labels, effort/complexity signals
+    if (/^(size[/:_\s-]+)?s(mall)?$/.test(l)) return 'small';
+    if (/(effort|complexity)[/:_\s-]*(small|easy|low|minimal|simple|minor)/.test(l)) return 'small';
+
+    // medium: M size labels
+    if (/^(size[/:_\s-]+)?m(edium)?$/.test(l)) return 'medium';
+    if (/(effort|complexity)[/:_\s-]*(medium|moderate|normal)/.test(l)) return 'medium';
+
+    // large: L/XL/XXL size labels, high-effort signals
+    if (/^(size[/:_\s-]+)?x{0,2}l(arge)?$/.test(l)) return 'large';
+    if (/(effort|complexity)[/:_\s-]*(large|hard|high|major|complex)/.test(l)) return 'large';
+  }
+  return null;
+}
+
 export interface Project {
   id: string;
   githubOwner: string;

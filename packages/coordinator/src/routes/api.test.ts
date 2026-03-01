@@ -318,4 +318,100 @@ describe('Coordinator API', () => {
       expect(me.available).toBe(true);
     });
   });
+
+  describe('Auto-matching on /tasks/next', () => {
+    let projectId: string;
+    let issueId: string;
+
+    beforeEach(async () => {
+      // Register a project
+      const pRes = await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          githubOwner: 'acme',
+          githubRepo: 'widget',
+          languages: ['typescript'],
+        }),
+      });
+      const project = await pRes.json() as Project;
+      projectId = project.id;
+
+      // Register an issue
+      const iRes = await app.request(`/projects/${projectId}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubNumber: 99, title: 'Auto-fix', body: '', taskType: 'code' }),
+      });
+      const issue = await iRes.json() as Issue;
+      issueId = issue.id;
+
+      // Pledge to the project
+      await app.request('/contributors/me/pledges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ projectId, budgetPercent: 80 }),
+      });
+    });
+
+    it('returns 204 when contributor is unavailable', async () => {
+      // available defaults to false — no mark-available call
+      const res = await app.request('/tasks/next', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(res.status).toBe(204);
+    });
+
+    it('auto-creates and returns a task when contributor is available with a matching pledge', async () => {
+      await app.request('/contributors/me/available', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ available: true }),
+      });
+
+      const res = await app.request('/tasks/next', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(res.status).toBe(200);
+
+      const body = await res.json() as { task: Task; issue: Issue; project: Project };
+      expect(body.task.contributorId).toBe(contributorId);
+      expect(body.task.status).toBe('dispatched');
+      expect(body.issue.id).toBe(issueId);
+      expect(body.project.githubRepo).toBe('widget');
+    });
+
+    it('marks the issue as assigned after auto-matching', async () => {
+      await app.request('/contributors/me/available', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ available: true }),
+      });
+
+      await app.request('/tasks/next', { headers: { Authorization: `Bearer ${authToken}` } });
+
+      const issuesRes = await app.request(`/projects/${projectId}/issues`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const issueList = await issuesRes.json() as Issue[];
+      expect(issueList[0]?.status).toBe('assigned');
+    });
+
+    it('does not double-assign: second poll returns same task', async () => {
+      await app.request('/contributors/me/available', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ available: true }),
+      });
+
+      const first = await app.request('/tasks/next', { headers: { Authorization: `Bearer ${authToken}` } });
+      const second = await app.request('/tasks/next', { headers: { Authorization: `Bearer ${authToken}` } });
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      const t1 = (await first.json() as { task: Task }).task;
+      const t2 = (await second.json() as { task: Task }).task;
+      expect(t1.id).toBe(t2.id);
+    });
+  });
 });

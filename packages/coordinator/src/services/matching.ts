@@ -2,6 +2,8 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { contributors, issues, pledges, projects, tasks } from '../db/schema.js';
 import type { Issue, Project, Contributor, Pledge } from '@tah/shared';
+
+const TERMINAL_STATUSES = ['completed', 'failed'];
 import { COMPLEXITY_TOKEN_ESTIMATES } from '@tah/shared';
 
 // Score a (contributor, issue) pair for matching
@@ -156,4 +158,80 @@ export async function findBestMatches(
   }
 
   return results;
+}
+
+// Find the best available issue for a single contributor.
+// Called on every poll — returns the top-scored match or null.
+export async function findMatchForContributor(
+  db: Db,
+  contributorId: string,
+): Promise<{ issueId: string; pledgeId: string; score: number } | null> {
+  const contributor = await db
+    .select()
+    .from(contributors)
+    .where(eq(contributors.id, contributorId))
+    .get();
+
+  if (!contributor || !contributor.available) return null;
+
+  // Count in-flight tasks (non-terminal)
+  const allTasks = await db
+    .select({ status: tasks.status })
+    .from(tasks)
+    .where(eq(tasks.contributorId, contributorId))
+    .all();
+  const activeCount = allTasks.filter((t) => !TERMINAL_STATUSES.includes(t.status)).length;
+  if (activeCount >= contributor.maxConcurrent) return null;
+
+  // Load active pledges for this contributor
+  const contributorPledges = await db
+    .select()
+    .from(pledges)
+    .where(and(eq(pledges.contributorId, contributorId), eq(pledges.active, true)))
+    .all();
+  if (contributorPledges.length === 0) return null;
+
+  // Build typed contributor once
+  const { cycleResetDate: rawCycleReset, ...contributorRest } = contributor;
+  const contributorTyped: Contributor = {
+    ...contributorRest,
+    languages: JSON.parse(contributor.languages) as string[],
+    autonomy: contributor.autonomy as 'full' | 'review_before_pr',
+    ...(rawCycleReset != null ? { cycleResetDate: rawCycleReset } : {}),
+  };
+
+  const candidates: Array<{ issueId: string; pledgeId: string; score: number }> = [];
+
+  for (const pledge of contributorPledges) {
+    const project = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, pledge.projectId))
+      .get();
+    if (!project) continue;
+
+    const projectIssues = await db
+      .select()
+      .from(issues)
+      .where(and(eq(issues.projectId, project.id), eq(issues.status, 'available')))
+      .all();
+
+    const projectTyped = {
+      ...project,
+      languages: JSON.parse(project.languages) as string[],
+      taskTypes: JSON.parse(project.taskTypes) as string[],
+    } as unknown as Project;
+    const pledgeTyped = { ...pledge, active: Boolean(pledge.active) };
+
+    for (const issue of projectIssues) {
+      const score = scoreMatch(contributorTyped, issue as unknown as Issue, projectTyped, pledgeTyped);
+      if (score !== null) {
+        candidates.push({ issueId: issue.id, pledgeId: pledge.id, score });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]!;
 }

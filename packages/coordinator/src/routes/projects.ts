@@ -1,10 +1,34 @@
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { RegisterProjectSchema, RegisterIssueSchema, COMPLEXITY_TOKEN_ESTIMATES } from '@tah/shared';
+import {
+  RegisterProjectSchema,
+  RegisterIssueSchema,
+  COMPLEXITY_TOKEN_ESTIMATES,
+  mapGitHubLabelsToComplexity,
+  type IssueComplexity,
+} from '@tah/shared';
 import type { Db } from '../db/index.js';
 import { issues, projects } from '../db/schema.js';
 import { getContributorFromToken, extractBearerToken } from '../services/auth.js';
+
+async function inferComplexityFromGitHub(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+): Promise<IssueComplexity | null> {
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+      { headers: { 'User-Agent': 'tokens-at-home', Accept: 'application/vnd.github.v3+json' } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as { labels?: Array<{ name: string }> };
+    return mapGitHubLabelsToComplexity((data.labels ?? []).map((l) => l.name));
+  } catch {
+    return null;
+  }
+}
 
 export function projectRoutes(db: Db) {
   const app = new Hono();
@@ -69,7 +93,10 @@ export function projectRoutes(db: Db) {
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
     const input = parsed.data;
-    const complexity = input.estimatedComplexity ?? 'small';
+    const complexity =
+      input.estimatedComplexity
+      ?? await inferComplexityFromGitHub(project.githubOwner, project.githubRepo, input.githubNumber)
+      ?? 'small';
     const id = randomBytes(8).toString('hex');
 
     await db.insert(issues).values({
