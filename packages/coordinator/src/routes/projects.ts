@@ -12,21 +12,24 @@ import type { Db } from '../db/index.js';
 import { issues, projects } from '../db/schema.js';
 import { getContributorFromToken, extractBearerToken } from '../services/auth.js';
 
-async function inferComplexityFromGitHub(
+async function fetchGitHubIssueData(
   owner: string,
   repo: string,
   issueNumber: number,
-): Promise<IssueComplexity | null> {
+): Promise<{ complexity: IssueComplexity | null; body: string | null }> {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
       { headers: { 'User-Agent': 'tokens-at-home', Accept: 'application/vnd.github.v3+json' } },
     );
-    if (!res.ok) return null;
-    const data = await res.json() as { labels?: Array<{ name: string }> };
-    return mapGitHubLabelsToComplexity((data.labels ?? []).map((l) => l.name));
+    if (!res.ok) return { complexity: null, body: null };
+    const data = await res.json() as { labels?: Array<{ name: string }>; body?: string | null };
+    return {
+      complexity: mapGitHubLabelsToComplexity((data.labels ?? []).map((l) => l.name)),
+      body: data.body ?? null,
+    };
   } catch {
-    return null;
+    return { complexity: null, body: null };
   }
 }
 
@@ -93,10 +96,13 @@ export function projectRoutes(db: Db) {
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
     const input = parsed.data;
-    const complexity =
-      input.estimatedComplexity
-      ?? await inferComplexityFromGitHub(project.githubOwner, project.githubRepo, input.githubNumber)
-      ?? 'small';
+    const needsGitHub = !input.estimatedComplexity || !input.body;
+    const gh = needsGitHub
+      ? await fetchGitHubIssueData(project.githubOwner, project.githubRepo, input.githubNumber)
+      : { complexity: null, body: null };
+
+    const complexity = input.estimatedComplexity ?? gh.complexity ?? 'small';
+    const issueBody = input.body || gh.body || '';
     const id = randomBytes(8).toString('hex');
 
     await db.insert(issues).values({
@@ -104,7 +110,7 @@ export function projectRoutes(db: Db) {
       projectId: project.id,
       githubNumber: input.githubNumber,
       title: input.title,
-      body: input.body,
+      body: issueBody,
       taskType: input.taskType,
       estimatedComplexity: complexity,
       estimatedTokens: COMPLEXITY_TOKEN_ESTIMATES[complexity],
