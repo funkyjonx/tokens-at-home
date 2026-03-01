@@ -50,7 +50,7 @@ You can pledge to multiple projects with split budgets. The coordinator picks is
 tah daemon start
 ```
 
-That's it. The daemon polls for tasks, clones repos to `~/.tokens-at-home/work/`, and runs Claude on each issue. By default you'll be shown the diff and asked to approve before any PR is submitted.
+Keep this terminal open. The daemon runs in the foreground, polls for tasks, and clones repos to `~/.tokens-at-home/work/`. When Claude finishes a task, you'll be shown the diff and asked to approve before any PR is submitted.
 
 ```
 Task received: facebook/react#4821 — Fix useEffect cleanup on unmount
@@ -72,9 +72,7 @@ tah contributor pledges           List your active pledges
 tah contributor available         Mark yourself available for tasks
 tah contributor unavailable       Pause task assignment
 
-tah daemon start                  Start the daemon in background
-tah daemon stop                   Stop the daemon
-tah daemon status                 Check if it's running
+tah daemon start                  Start the daemon (foreground — keep terminal open)
 ```
 
 ### How your capacity is used
@@ -92,7 +90,7 @@ tah contributor available
 - **Your API key never leaves your machine.** The daemon calls your local `claude` binary — it never touches your credentials.
 - **Work is sandboxed.** Each task runs in `~/.tokens-at-home/work/<task-id>/`. Claude is restricted to git, npm, and file operations. No arbitrary shell access.
 - **You review before anything is submitted.** The default `review_before_pr` mode shows you a diff and waits for your approval.
-- **Kill switch.** `tah daemon stop` terminates immediately.
+- **Kill switch.** `Ctrl-C` terminates the daemon immediately.
 - **Everything is logged.** Full session logs at `~/.tokens-at-home/logs/`.
 
 ---
@@ -128,9 +126,10 @@ Contributors will be matched to your issues automatically. You'll receive PRs th
 ### Project CLI
 
 ```
-tah project register <owner> <repo>             Register a repo
+tah project register <owner> <repo>             Register a repo (requires push access)
 tah project list                                 List registered projects
-tah project issue add <id> <n> <title>          Make an issue available
+tah project issue add <id> <n> [title]          Make an issue available
+tah project issue sync <id>                      Sync all open labeled issues from GitHub
 tah project issues <id>                          List issues and their status
 ```
 
