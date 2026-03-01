@@ -16,9 +16,11 @@ export async function humanReview(
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
 
   if (!isTTY) {
-    // Non-interactive mode: auto-approve
-    console.log('[reviewer] Non-interactive session, auto-approving');
-    return { approved: true };
+    // The daemon must run in a foreground terminal so contributors can review diffs.
+    // Auto-approving in non-interactive mode would defeat the purpose of review_before_pr.
+    throw new Error(
+      'Human review requires an interactive terminal. Run `tah daemon start` in a foreground shell.',
+    );
   }
 
   // Show the diff
