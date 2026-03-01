@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { spawnSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { loadConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
 import { mapGitHubLabelsToComplexity } from '@tah/shared';
@@ -16,10 +17,14 @@ export function projectCommand(): Command {
     .option('-l, --languages <langs>', 'Comma-separated languages (e.g. typescript,rust)', 'typescript')
     .option('--label <label>', 'GitHub label for eligible issues', 'tah')
     .option('--max-concurrent <n>', 'Max concurrent tasks', '3')
+    .option('--trust-threshold <n>', 'Min contributor trust score (0–1) to receive tasks', '0')
+    .option('--claude-md <file>', 'Path to a CLAUDE.md file to inject as project context for contributors')
     .action(async (owner: string, repo: string, opts: {
       languages: string;
       label: string;
       maxConcurrent: string;
+      trustThreshold: string;
+      claudeMd?: string;
     }) => {
       const config = loadConfig();
       requireAuth(config);
@@ -45,6 +50,21 @@ export function projectCommand(): Command {
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
 
       const languages = opts.languages.split(',').map((l) => l.trim());
+
+      let claudeMd: string | undefined;
+      if (opts.claudeMd) {
+        try {
+          claudeMd = readFileSync(opts.claudeMd, 'utf-8');
+        } catch {
+          console.error(`Could not read CLAUDE.md file: ${opts.claudeMd}`);
+          process.exit(1);
+        }
+        if (claudeMd.length > 4000) {
+          console.error(`CLAUDE.md content exceeds 4000 character limit (${claudeMd.length} chars). Trim it before registering.`);
+          process.exit(1);
+        }
+      }
+
       const project = await api.post<Project>('/projects', {
         githubOwner: owner,
         githubRepo: repo,
@@ -52,7 +72,8 @@ export function projectCommand(): Command {
         issueLabel: opts.label,
         taskTypes: ['code'],
         maxConcurrent: parseInt(opts.maxConcurrent, 10),
-        trustThreshold: 0,
+        trustThreshold: parseFloat(opts.trustThreshold),
+        ...(claudeMd ? { claudeMd } : {}),
       });
 
       console.log(`Project registered: ${project.id}`);
@@ -148,6 +169,7 @@ export function projectCommand(): Command {
       const project = await api.get<Project>(`/projects/${projectId}`);
       console.log(`Syncing "${project.issueLabel}" issues from ${project.githubOwner}/${project.githubRepo}...`);
 
+      const SYNC_LIMIT = 500;
       const result = spawnSync(
         'gh',
         [
@@ -156,7 +178,7 @@ export function projectCommand(): Command {
           '--label', project.issueLabel,
           '--state', 'open',
           '--json', 'number,title,body,labels',
-          '--limit', '100',
+          '--limit', String(SYNC_LIMIT),
         ],
         { encoding: 'utf-8' },
       );
@@ -178,7 +200,7 @@ export function projectCommand(): Command {
         return;
       }
 
-      console.log(`Found ${ghIssues.length} issue(s).\n`);
+      console.log(`Found ${ghIssues.length} issue(s).${ghIssues.length === SYNC_LIMIT ? ` (hit limit of ${SYNC_LIMIT} — there may be more; run sync again after processing these)` : ''}\n`);
 
       let added = 0;
       let skipped = 0;

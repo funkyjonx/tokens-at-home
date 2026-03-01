@@ -59,6 +59,9 @@ export function contributorCommand(): Command {
       console.log(`Registered as contributor: ${result.contributor.githubUsername}`);
       console.log(`ID: ${result.contributor.id}`);
       console.log(`Autonomy: ${result.contributor.autonomy}`);
+      if (opts.autonomy === 'full' && result.contributor.autonomy !== 'full') {
+        console.log(`Note: new contributors start with review_before_pr. You'll be shown a diff and asked to approve before any PR is submitted. Full autonomy is unlocked after you've had PRs merged.`);
+      }
       console.log(`Auth token saved to ~/.tokens-at-home/config.json`);
       console.log('\nRun `tah worker start` to begin contributing.');
     });

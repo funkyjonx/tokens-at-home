@@ -56,7 +56,8 @@ export async function createPr(
 
   if (isOwner || !contributorUsername) {
     // Contributor owns the repo — push directly to origin
-    const pushResult = spawnSync('git', ['push', 'origin', branchName], {
+    // --force-with-lease allows retry if a previous attempt left the branch on remote
+    const pushResult = spawnSync('git', ['push', '--force-with-lease', 'origin', branchName], {
       cwd: repoPath,
       stdio: 'pipe',
     });
@@ -82,7 +83,8 @@ export async function createPr(
     spawnSync('git', ['remote', 'add', 'fork', forkUrl], { cwd: repoPath, stdio: 'pipe' });
 
     // 3. Push branch to fork
-    const pushResult = spawnSync('git', ['push', 'fork', branchName], {
+    // --force-with-lease allows retry if a previous attempt left the branch on the fork
+    const pushResult = spawnSync('git', ['push', '--force-with-lease', 'fork', branchName], {
       cwd: repoPath,
       stdio: 'pipe',
     });

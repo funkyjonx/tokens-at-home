@@ -46,14 +46,22 @@ export async function startWorker(configPath?: string) {
   console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
 
+  let emptyPolls = 0;
+
   while (running) {
     try {
       const assignment = await client.getNextTask();
 
       if (!assignment) {
+        emptyPolls++;
+        if (emptyPolls % 5 === 0) {
+          console.log(`[worker] Waiting for tasks... (${emptyPolls} polls, no match yet — check your pledges with \`tah contributor pledges\`)`);
+        }
         await sleep(config.pollIntervalMs ?? POLL_INTERVAL_MS);
         continue;
       }
+
+      emptyPolls = 0;
 
       const { task, issue, project } = assignment;
       console.log(`[worker] Task received: ${task.id} (${project.githubOwner}/${project.githubRepo}#${issue.githubNumber})`);
