@@ -33,12 +33,14 @@ export function contributorRoutes(db: Db) {
       .get();
     if (existing) return c.json({ error: 'Username already registered' }, 409);
 
+    // New contributors start with trustScore = 0 and are locked to review_before_pr
+    // regardless of what they request. Full autonomy is unlocked once trust is earned.
     const id = randomBytes(8).toString('hex');
     await db.insert(contributors).values({
       id,
       githubUsername: input.githubUsername,
       languages: JSON.stringify(input.languages),
-      autonomy: input.autonomy,
+      autonomy: 'review_before_pr',
       cycleResetDate: input.cycleResetDate ?? null,
       maxConcurrent: input.maxConcurrent,
       trustScore: 0,

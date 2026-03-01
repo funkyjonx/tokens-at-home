@@ -17,7 +17,7 @@ export const RegisterProjectSchema = z.object({
   githubRepo: z.string().min(1),
   languages: z.array(z.string()).min(1),
   issueLabel: z.string().default('tah'),
-  claudeMd: z.string().optional(),
+  claudeMd: z.string().max(4000).optional(),
   taskTypes: z.array(TaskTypeSchema).min(1).default(['code']),
   maxConcurrent: z.number().int().min(1).max(20).default(3),
   trustThreshold: z.number().min(0).max(1).default(0),

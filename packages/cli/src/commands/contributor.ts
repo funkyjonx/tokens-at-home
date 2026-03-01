@@ -50,12 +50,15 @@ export function contributorCommand(): Command {
         coordinatorUrl: opts.coordinator,
         contributorId: result.contributor.id,
         authToken: result.token,
-        autonomy: opts.autonomy as 'full' | 'review_before_pr',
+        // Use the coordinator's authoritative autonomy value (new contributors are
+        // locked to review_before_pr regardless of what was requested)
+        autonomy: result.contributor.autonomy as 'full' | 'review_before_pr',
         githubUsername: result.contributor.githubUsername,
       });
 
       console.log(`Registered as contributor: ${result.contributor.githubUsername}`);
       console.log(`ID: ${result.contributor.id}`);
+      console.log(`Autonomy: ${result.contributor.autonomy}`);
       console.log(`Auth token saved to ~/.tokens-at-home/config.json`);
       console.log('\nRun `tah daemon start` to begin contributing.');
     });

@@ -120,6 +120,12 @@ export function projectRoutes(db: Db) {
 
     const complexity = input.estimatedComplexity ?? gh.complexity ?? 'small';
     const issueBody = input.body || gh.body || '';
+
+    const BODY_WARN_CHARS = 8000;
+    const bodyWarning = issueBody.length > BODY_WARN_CHARS
+      ? `Issue body is ${issueBody.length} chars (>${BODY_WARN_CHARS}). Oversized bodies risk prompt injection — consider trimming before registering.`
+      : null;
+
     const id = randomBytes(8).toString('hex');
 
     await db.insert(issues).values({
@@ -135,7 +141,7 @@ export function projectRoutes(db: Db) {
     });
 
     const issue = await db.select().from(issues).where(eq(issues.id, id)).get();
-    return c.json(issue, 201);
+    return c.json(bodyWarning ? { ...issue, warning: bodyWarning } : issue, 201);
   });
 
   // List issues for a project

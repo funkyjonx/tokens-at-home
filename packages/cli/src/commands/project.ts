@@ -23,6 +23,25 @@ export function projectCommand(): Command {
     }) => {
       const config = loadConfig();
       requireAuth(config);
+
+      // Verify the authenticated gh user has push access to this repo
+      const ghCheck = spawnSync(
+        'gh',
+        ['api', `repos/${owner}/${repo}`, '--jq', '.permissions.push'],
+        { encoding: 'utf-8' },
+      );
+      if (ghCheck.status !== 0) {
+        console.error(`Could not verify repo access: ${ghCheck.stderr.trim() || 'gh api failed'}`);
+        console.error('Make sure you are authenticated with `gh auth login` and the repo exists.');
+        process.exit(1);
+      }
+      const hasPush = ghCheck.stdout.trim() === 'true';
+      if (!hasPush) {
+        console.error(`You do not have push access to ${owner}/${repo}.`);
+        console.error('Only maintainers with push access can register a project.');
+        process.exit(1);
+      }
+
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
 
       const languages = opts.languages.split(',').map((l) => l.trim());
@@ -89,11 +108,12 @@ export function projectCommand(): Command {
       if (opts.body) payload['body'] = opts.body;
       if (opts.complexity) payload['estimatedComplexity'] = opts.complexity;
 
-      const issue = await api.post<Issue>(`/projects/${projectId}/issues`, payload);
+      const issue = await api.post<Issue & { warning?: string }>(`/projects/${projectId}/issues`, payload);
 
       console.log(`Issue registered: ${issue.id}`);
       console.log(`  #${issue.githubNumber}: ${issue.title}`);
       console.log(`  Complexity: ${issue.estimatedComplexity} (~${issue.estimatedTokens.toLocaleString()} tokens)`);
+      if (issue.warning) console.warn(`  Warning: ${issue.warning}`);
     });
 
   issueCmd
