@@ -1,10 +1,10 @@
 {
-  "name": "@tah/daemon",
+  "name": "@tah/worker",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "tah-daemon": "./dist/index.js"
+    "tah-worker": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup",

@@ -4,18 +4,18 @@ import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { loadConfig, requireAuth } from '../config.js';
 
-export function daemonCommand(): Command {
-  const cmd = new Command('daemon').description('Manage the contributor daemon');
+export function workerCommand(): Command {
+  const cmd = new Command('worker').description('Run the contributor worker');
 
   cmd
     .command('start')
-    .description('Start the daemon (runs in the foreground — keep this terminal open)')
+    .description('Start the worker (runs in the foreground — keep this terminal open)')
     .action(async () => {
       const config = loadConfig();
       requireAuth(config);
 
-      const daemonBin = findDaemonBin();
-      const child = spawn(process.execPath, [daemonBin], {
+      const workerBin = findWorkerBin();
+      const child = spawn(process.execPath, [workerBin], {
         stdio: 'inherit',
         env: { ...process.env },
       });
@@ -26,15 +26,15 @@ export function daemonCommand(): Command {
   return cmd;
 }
 
-function findDaemonBin(): string {
+function findWorkerBin(): string {
   const thisDir = dirname(new URL(import.meta.url).pathname);
   const candidates = [
-    // Development: packages/cli/dist → packages/daemon/dist
-    join(thisDir, '../../daemon/dist/index.js'),
-    // Installed globally: node_modules/@tah/cli/dist → node_modules/@tah/daemon/dist
-    join(thisDir, '../../../@tah/daemon/dist/index.js'),
+    // Development: packages/cli/dist → packages/worker/dist
+    join(thisDir, '../../worker/dist/index.js'),
+    // Installed globally: node_modules/@tah/cli/dist → node_modules/@tah/worker/dist
+    join(thisDir, '../../../@tah/worker/dist/index.js'),
     // Running from monorepo root
-    join(process.cwd(), 'packages', 'daemon', 'dist', 'index.js'),
+    join(process.cwd(), 'packages', 'worker', 'dist', 'index.js'),
   ];
 
   for (const candidate of candidates) {
@@ -42,5 +42,5 @@ function findDaemonBin(): string {
   }
 
   // Fall back to source (requires tsx in PATH)
-  return join(process.cwd(), 'packages', 'daemon', 'src', 'index.ts');
+  return join(process.cwd(), 'packages', 'worker', 'src', 'index.ts');
 }

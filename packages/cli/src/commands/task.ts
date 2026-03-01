@@ -19,7 +19,7 @@ export function taskCommand(): Command {
       const task = await api.post<Task>('/tasks/assign', { issueId, contributorId });
       console.log(`Task created: ${task.id}`);
       console.log(`Status: ${task.status}`);
-      console.log(`The contributor's daemon will pick this up on its next poll.`);
+      console.log(`The contributor's worker will pick this up on its next poll.`);
     });
 
   cmd

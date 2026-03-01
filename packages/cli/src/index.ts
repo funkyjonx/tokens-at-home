@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import { projectCommand } from './commands/project.js';
 import { contributorCommand } from './commands/contributor.js';
-import { daemonCommand } from './commands/daemon.js';
+import { workerCommand } from './commands/worker.js';
 import { taskCommand } from './commands/task.js';
 import { configCommand } from './commands/config.js';
 
@@ -16,7 +16,7 @@ program
 program.addCommand(configCommand());
 program.addCommand(projectCommand());
 program.addCommand(contributorCommand());
-program.addCommand(daemonCommand());
+program.addCommand(workerCommand());
 program.addCommand(taskCommand());
 
 program.parse(process.argv);

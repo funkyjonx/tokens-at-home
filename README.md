@@ -47,7 +47,7 @@ You can pledge to multiple projects with split budgets. The coordinator picks is
 ### Start contributing
 
 ```bash
-tah daemon start
+tah worker start
 ```
 
 Keep this terminal open. The daemon runs in the foreground, polls for tasks, and clones repos to `~/.tokens-at-home/work/`. When Claude finishes a task, you'll be shown the diff and asked to approve before any PR is submitted.
@@ -72,7 +72,7 @@ tah contributor pledges           List your active pledges
 tah contributor available         Mark yourself available for tasks
 tah contributor unavailable       Pause task assignment
 
-tah daemon start                  Start the daemon (foreground — keep terminal open)
+tah worker start                  Start the worker (foreground — keep terminal open)
 ```
 
 ### How your capacity is used

@@ -60,7 +60,7 @@ export function contributorCommand(): Command {
       console.log(`ID: ${result.contributor.id}`);
       console.log(`Autonomy: ${result.contributor.autonomy}`);
       console.log(`Auth token saved to ~/.tokens-at-home/config.json`);
-      console.log('\nRun `tah daemon start` to begin contributing.');
+      console.log('\nRun `tah worker start` to begin contributing.');
     });
 
   cmd

@@ -1,12 +1,12 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { DaemonConfigSchema, type DaemonConfig } from '@tah/shared';
+import { WorkerConfigSchema, type WorkerConfig } from '@tah/shared';
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), '.tokens-at-home', 'config.json');
 export const DEFAULT_COORDINATOR_URL = 'http://localhost:3000';
 
-export function loadConfig(configPath = DEFAULT_CONFIG_PATH): DaemonConfig {
+export function loadConfig(configPath = DEFAULT_CONFIG_PATH): WorkerConfig {
   if (!existsSync(configPath)) {
     throw new Error(
       `Config not found at ${configPath}. Run 'tah contributor register' first.`,
@@ -15,16 +15,16 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): DaemonConfig {
 
   const raw = readFileSync(configPath, 'utf-8');
   const json = JSON.parse(raw);
-  return DaemonConfigSchema.parse(json);
+  return WorkerConfigSchema.parse(json);
 }
 
 export function buildDefaultConfig(
   coordinatorUrl: string,
   contributorId: string,
   authToken: string,
-): DaemonConfig {
+): WorkerConfig {
   const base = join(homedir(), '.tokens-at-home');
-  return DaemonConfigSchema.parse({
+  return WorkerConfigSchema.parse({
     coordinatorUrl,
     contributorId,
     authToken,

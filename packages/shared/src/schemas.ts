@@ -79,8 +79,8 @@ export const FailTaskSchema = z.object({
 });
 export type FailTaskInput = z.infer<typeof FailTaskSchema>;
 
-// Daemon config stored locally
-export const DaemonConfigSchema = z.object({
+// Worker config stored locally
+export const WorkerConfigSchema = z.object({
   coordinatorUrl: z.string().url(),
   contributorId: z.string().min(1),
   authToken: z.string().min(1),
@@ -90,4 +90,4 @@ export const DaemonConfigSchema = z.object({
   autonomy: ContributorAutonomySchema.optional(),
   githubUsername: z.string().optional(),
 });
-export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
+export type WorkerConfig = z.infer<typeof WorkerConfigSchema>;

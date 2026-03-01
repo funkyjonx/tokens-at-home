@@ -19,7 +19,7 @@ export async function humanReview(
     // The daemon must run in a foreground terminal so contributors can review diffs.
     // Auto-approving in non-interactive mode would defeat the purpose of review_before_pr.
     throw new Error(
-      'Human review requires an interactive terminal. Run `tah daemon start` in a foreground shell.',
+      'Human review requires an interactive terminal. Run `tah worker start` in a foreground shell.',
     );
   }
 

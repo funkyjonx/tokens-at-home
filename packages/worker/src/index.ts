@@ -1,7 +1,7 @@
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { DaemonConfigSchema } from '@tah/shared';
+import { WorkerConfigSchema } from '@tah/shared';
 import { CoordinatorClient } from './poller.js';
 import { executeTask } from './executor.js';
 import { humanReview } from './reviewer.js';
@@ -16,7 +16,7 @@ let running = true;
 let currentHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 process.on('SIGINT', () => {
-  console.log('\n[daemon] Shutting down...');
+  console.log('\n[worker] Shutting down...');
   running = false;
   if (currentHeartbeatTimer) clearInterval(currentHeartbeatTimer);
   process.exit(0);
@@ -27,7 +27,7 @@ process.on('SIGTERM', () => {
   if (currentHeartbeatTimer) clearInterval(currentHeartbeatTimer);
 });
 
-export async function startDaemon(configPath?: string) {
+export async function startWorker(configPath?: string) {
   const config = await loadConfig(configPath);
 
   const workDir = config.workDir ?? DEFAULT_WORK_DIR;
@@ -37,7 +37,7 @@ export async function startDaemon(configPath?: string) {
 
   const client = new CoordinatorClient(config);
 
-  console.log('[daemon] Started. Polling for tasks...');
+  console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
 
   while (running) {
@@ -50,18 +50,18 @@ export async function startDaemon(configPath?: string) {
       }
 
       const { task, issue, project } = assignment;
-      console.log(`[daemon] Task received: ${task.id} (${project.githubOwner}/${project.githubRepo}#${issue.githubNumber})`);
+      console.log(`[worker] Task received: ${task.id} (${project.githubOwner}/${project.githubRepo}#${issue.githubNumber})`);
 
       // Start heartbeat loop
       currentHeartbeatTimer = setInterval(async () => {
         try {
           const hb = await client.sendHeartbeat(task.id);
           if (hb.cancel) {
-            console.log('[daemon] Coordinator requested task cancellation');
+            console.log('[worker] Coordinator requested task cancellation');
             running = false;
           }
         } catch (err) {
-          console.error('[daemon] Heartbeat error:', err);
+          console.error('[worker] Heartbeat error:', err);
         }
       }, HEARTBEAT_INTERVAL_MS);
 
@@ -107,10 +107,10 @@ export async function startDaemon(configPath?: string) {
           result.claudeOutput.summary,
         );
 
-        console.log(`[daemon] Task ${task.id} completed. PR: ${pr.prUrl}`);
+        console.log(`[worker] Task ${task.id} completed. PR: ${pr.prUrl}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[daemon] Task ${task.id} failed: ${msg}`);
+        console.error(`[worker] Task ${task.id} failed: ${msg}`);
         await client.failTask(task.id, msg);
       } finally {
         if (currentHeartbeatTimer) {
@@ -119,13 +119,13 @@ export async function startDaemon(configPath?: string) {
         }
       }
     } catch (err) {
-      console.error('[daemon] Poll error:', err);
+      console.error('[worker] Poll error:', err);
       await sleep(config.pollIntervalMs ?? POLL_INTERVAL_MS);
     }
   }
 
   await client.setAvailable(false);
-  console.log('[daemon] Stopped.');
+  console.log('[worker] Stopped.');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -135,8 +135,8 @@ function sleep(ms: number): Promise<void> {
 // Entry point when run directly
 const isMain = process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts');
 if (isMain) {
-  startDaemon().catch((err) => {
-    console.error('[daemon] Fatal:', err);
+  startWorker().catch((err) => {
+    console.error('[worker] Fatal:', err);
     process.exit(1);
   });
 }

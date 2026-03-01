@@ -19,7 +19,18 @@
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(pnpm --filter @tah/coordinator build:*)"
+      "Bash(pnpm --filter @tah/coordinator build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(fly deploy:*)",
+      "Bash(~/.fly/bin/fly deploy:*)",
+      "Bash(~/.fly/bin/fly status:*)",
+      "Bash(~/.fly/bin/fly logs:*)",
+      "Bash(pnpm --filter @tah/cli build:*)",
+      "Bash(python3:*)",
+      "Bash(git reset:*)",
+      "Bash(pnpm --filter @tah/daemon build:*)",
+      "Bash(git push:*)",
+      "Bash(pnpm --filter @tah/worker build:*)"
     ]
   }
 }
