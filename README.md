@@ -50,7 +50,7 @@ You can pledge to multiple projects with split budgets. The coordinator picks is
 tah worker start
 ```
 
-Keep this terminal open. The daemon runs in the foreground, polls for tasks, and clones repos to `~/.tokens-at-home/work/`. When Claude finishes a task, you'll be shown the diff and asked to approve before any PR is submitted.
+Keep this terminal open. The worker runs in the foreground, polls for tasks, and clones repos to `~/.tokens-at-home/work/`. When Claude finishes a task, you'll be shown the diff and asked to approve before any PR is submitted.
 
 ```
 Task received: facebook/react#4821 — Fix useEffect cleanup on unmount
@@ -87,10 +87,10 @@ tah contributor available
 
 ### Safety
 
-- **Your API key never leaves your machine.** The daemon calls your local `claude` binary — it never touches your credentials.
+- **Your API key never leaves your machine.** The worker calls your local `claude` binary — it never touches your credentials.
 - **Work is sandboxed.** Each task runs in `~/.tokens-at-home/work/<task-id>/`. Claude is restricted to git, npm, and file operations. No arbitrary shell access.
 - **You review before anything is submitted.** The default `review_before_pr` mode shows you a diff and waits for your approval.
-- **Kill switch.** `Ctrl-C` terminates the daemon immediately.
+- **Kill switch.** `Ctrl-C` terminates the worker immediately.
 - **Everything is logged.** Full session logs at `~/.tokens-at-home/logs/`.
 
 ---
