@@ -16,6 +16,7 @@ export interface ExecutionResult {
   success: boolean;
   claudeOutput?: ClaudeOutput;
   repoPath?: string;
+  taskWorkDir?: string;
   error?: string;
 }
 
@@ -118,40 +119,46 @@ export async function executeTask(
     success: true,
     claudeOutput: { summary, tokensUsed, exitCode, rawOutput },
     repoPath,
+    taskWorkDir: sandbox.taskWorkDir,
   };
 }
 
 function parseClaudeOutput(rawOutput: string): { summary: string; tokensUsed: number } {
-  try {
-    // Claude --output-format json returns a JSON object with the result
-    const parsed = JSON.parse(rawOutput) as {
-      result?: string;
-      usage?: { input_tokens?: number; output_tokens?: number };
-    };
-
-    const resultText = parsed.result ?? '';
-    const tokensUsed =
-      (parsed.usage?.input_tokens ?? 0) + (parsed.usage?.output_tokens ?? 0);
-
-    // Try to extract the JSON summary from Claude's output
-    const jsonMatch = resultText.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch?.[1]) {
-      try {
-        const inner = JSON.parse(jsonMatch[1]) as { summary?: string };
-        return {
-          summary: inner.summary ?? resultText.slice(0, 200),
-          tokensUsed,
-        };
-      } catch {
-        // fall through
-      }
-    }
-
-    return {
-      summary: resultText.slice(0, 500) || 'Task completed',
-      tokensUsed,
-    };
-  } catch {
-    return { summary: 'Task completed (could not parse output)', tokensUsed: 0 };
+  if (!rawOutput.trim()) {
+    throw new Error('Claude produced no output');
   }
+
+  let parsed: { result?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  try {
+    parsed = JSON.parse(rawOutput) as typeof parsed;
+  } catch {
+    throw new Error(`Claude output was not valid JSON (got ${rawOutput.slice(0, 200)})`);
+  }
+
+  const resultText = parsed.result ?? '';
+  const tokensUsed =
+    (parsed.usage?.input_tokens ?? 0) + (parsed.usage?.output_tokens ?? 0);
+
+  if (tokensUsed === 0) {
+    throw new Error('Claude reported 0 tokens used — output may be malformed');
+  }
+
+  // Try to extract the JSON summary from Claude's output
+  const jsonMatch = resultText.match(/```json\n([\s\S]*?)\n```/);
+  if (jsonMatch?.[1]) {
+    try {
+      const inner = JSON.parse(jsonMatch[1]) as { summary?: string };
+      return {
+        summary: inner.summary ?? resultText.slice(0, 500),
+        tokensUsed,
+      };
+    } catch {
+      // fall through to plain text summary
+    }
+  }
+
+  return {
+    summary: resultText.slice(0, 500) || 'Task completed',
+    tokensUsed,
+  };
 }

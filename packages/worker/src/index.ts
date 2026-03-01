@@ -1,9 +1,9 @@
-import { mkdirSync } from 'fs';
+import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { WorkerConfigSchema } from '@tah/shared';
 import { CoordinatorClient } from './poller.js';
-import { executeTask } from './executor.js';
+import { executeTask, type ExecutionResult } from './executor.js';
 import { humanReview } from './reviewer.js';
 import { createPr } from './pr.js';
 import { DEFAULT_WORK_DIR, DEFAULT_LOG_DIR } from './sandbox.js';
@@ -37,6 +37,12 @@ export async function startWorker(configPath?: string) {
 
   const client = new CoordinatorClient(config);
 
+  // Warn if contributor has no active pledges — they'll never receive tasks
+  const pledges = await client.getPledges();
+  if (pledges.length === 0) {
+    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <budget%>` to pledge capacity to a project.');
+  }
+
   console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
 
@@ -65,11 +71,12 @@ export async function startWorker(configPath?: string) {
         }
       }, HEARTBEAT_INTERVAL_MS);
 
+      let result: ExecutionResult | undefined;
       try {
         // Update status: cloning
         await client.updateStatus(task.id, 'cloning');
 
-        const result = await executeTask(task, issue, project, workDir, logDir);
+        result = await executeTask(task, issue, project, workDir, logDir);
 
         if (!result.success || !result.claudeOutput || !result.repoPath) {
           throw new Error(result.error ?? 'Execution failed');
@@ -116,6 +123,14 @@ export async function startWorker(configPath?: string) {
         if (currentHeartbeatTimer) {
           clearInterval(currentHeartbeatTimer);
           currentHeartbeatTimer = null;
+        }
+        // Clean up work directory to avoid unbounded disk growth
+        if (result?.taskWorkDir) {
+          try {
+            rmSync(result.taskWorkDir, { recursive: true, force: true });
+          } catch {
+            // non-fatal — log dir is kept
+          }
         }
       }
     } catch (err) {

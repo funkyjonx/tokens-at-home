@@ -87,24 +87,40 @@ export function taskRoutes(db: Db) {
     if (!task) {
       const match = await findMatchForContributor(db, contributor.id);
       if (match) {
+        // Wrap insert + issue update in a transaction and re-check availability
+        // to prevent two workers from being assigned the same issue concurrently.
         const taskId = randomBytes(8).toString('hex');
         const now = new Date().toISOString();
 
-        await db.insert(tasks).values({
-          id: taskId,
-          issueId: match.issueId,
-          contributorId: contributor.id,
-          pledgeId: match.pledgeId,
-          status: 'dispatched',
-          lastHeartbeatAt: now,
+        const created = db.transaction((tx) => {
+          const fresh = tx
+            .select({ status: issues.status })
+            .from(issues)
+            .where(eq(issues.id, match.issueId))
+            .get();
+
+          if (!fresh || fresh.status !== 'available') return false;
+
+          tx.insert(tasks).values({
+            id: taskId,
+            issueId: match.issueId,
+            contributorId: contributor.id,
+            pledgeId: match.pledgeId,
+            status: 'dispatched',
+            lastHeartbeatAt: now,
+          }).run();
+
+          tx.update(issues)
+            .set({ status: 'assigned', updatedAt: now })
+            .where(eq(issues.id, match.issueId))
+            .run();
+
+          return true;
         });
 
-        await db
-          .update(issues)
-          .set({ status: 'assigned', updatedAt: now })
-          .where(eq(issues.id, match.issueId));
-
-        task = await db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+        if (created) {
+          task = await db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+        }
       }
     }
 

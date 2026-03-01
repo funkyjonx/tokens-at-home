@@ -1,7 +1,7 @@
-import type { DaemonConfig, TaskAssignment } from '@tah/shared';
+import type { WorkerConfig, TaskAssignment, Pledge } from '@tah/shared';
 
 export class CoordinatorClient {
-  constructor(private readonly config: DaemonConfig) {}
+  constructor(private readonly config: WorkerConfig) {}
 
   private get headers(): Record<string, string> {
     return {
@@ -60,6 +60,12 @@ export class CoordinatorClient {
       body: JSON.stringify({ errorDetails, tokensUsed }),
     });
     if (!res.ok) throw new Error(`Fail task failed: ${res.status}`);
+  }
+
+  async getPledges(): Promise<Pledge[]> {
+    const res = await fetch(this.url('/contributors/me/pledges'), { headers: this.headers });
+    if (!res.ok) throw new Error(`Get pledges failed: ${res.status}`);
+    return res.json() as Promise<Pledge[]>;
   }
 
   async setAvailable(available: boolean): Promise<void> {
