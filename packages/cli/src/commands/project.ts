@@ -1,6 +1,8 @@
 import { Command } from 'commander';
+import { spawnSync } from 'child_process';
 import { loadConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
+import { mapGitHubLabelsToComplexity } from '@tah/shared';
 import type { Project, Issue } from '@tah/shared';
 
 export function projectCommand(): Command {
@@ -58,7 +60,7 @@ export function projectCommand(): Command {
       }
     });
 
-  // 'tah project issue add' and 'tah project issue list'
+  // 'tah project issue add | list | sync'
   const issueCmd = new Command('issue').description('Manage project issues');
 
   issueCmd
@@ -66,14 +68,14 @@ export function projectCommand(): Command {
     .description('Register an issue as available for contributors')
     .argument('<project-id>', 'Project ID')
     .argument('<issue-number>', 'GitHub issue number')
-    .argument('<title>', 'Issue title')
+    .argument('[title]', 'Issue title (fetched from GitHub if omitted)')
     .option('--complexity <c>', 'trivial | small | medium | large (inferred from GitHub labels if omitted)')
     .option('--type <t>', 'code | tests | docs | deps | review', 'code')
-    .option('--body <body>', 'Issue body text', '')
-    .action(async (projectId: string, issueNumber: string, title: string, opts: {
+    .option('--body <body>', 'Issue body text (fetched from GitHub if omitted)')
+    .action(async (projectId: string, issueNumber: string, title: string | undefined, opts: {
       complexity?: string;
       type: string;
-      body: string;
+      body?: string;
     }) => {
       const config = loadConfig();
       requireAuth(config);
@@ -81,11 +83,10 @@ export function projectCommand(): Command {
 
       const payload: Record<string, unknown> = {
         githubNumber: parseInt(issueNumber, 10),
-        title,
-        body: opts.body,
         taskType: opts.type,
       };
-      // Only send complexity if explicitly provided; otherwise coordinator infers from GitHub labels
+      if (title) payload['title'] = title;
+      if (opts.body) payload['body'] = opts.body;
       if (opts.complexity) payload['estimatedComplexity'] = opts.complexity;
 
       const issue = await api.post<Issue>(`/projects/${projectId}/issues`, payload);
@@ -114,9 +115,94 @@ export function projectCommand(): Command {
       }
     });
 
+  issueCmd
+    .command('sync')
+    .description('Sync all open labeled issues from GitHub into the coordinator')
+    .argument('<project-id>', 'Project ID')
+    .option('--dry-run', 'Print what would be synced without registering anything')
+    .action(async (projectId: string, opts: { dryRun?: boolean }) => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+
+      const project = await api.get<Project>(`/projects/${projectId}`);
+      console.log(`Syncing "${project.issueLabel}" issues from ${project.githubOwner}/${project.githubRepo}...`);
+
+      const result = spawnSync(
+        'gh',
+        [
+          'issue', 'list',
+          '--repo', `${project.githubOwner}/${project.githubRepo}`,
+          '--label', project.issueLabel,
+          '--state', 'open',
+          '--json', 'number,title,body,labels',
+          '--limit', '100',
+        ],
+        { encoding: 'utf-8' },
+      );
+
+      if (result.status !== 0) {
+        console.error(`gh issue list failed: ${result.stderr}`);
+        process.exit(1);
+      }
+
+      const ghIssues = JSON.parse(result.stdout) as Array<{
+        number: number;
+        title: string;
+        body: string;
+        labels: Array<{ name: string }>;
+      }>;
+
+      if (ghIssues.length === 0) {
+        console.log(`No open issues found with label "${project.issueLabel}".`);
+        return;
+      }
+
+      console.log(`Found ${ghIssues.length} issue(s).\n`);
+
+      let added = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (const ghIssue of ghIssues) {
+        const labelNames = ghIssue.labels.map((l) => l.name);
+        const complexity = mapGitHubLabelsToComplexity(labelNames) ?? 'small';
+
+        if (opts.dryRun) {
+          console.log(`  [dry-run] #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
+          continue;
+        }
+
+        try {
+          await api.post<Issue>(`/projects/${projectId}/issues`, {
+            githubNumber: ghIssue.number,
+            title: ghIssue.title,
+            body: ghIssue.body ?? '',
+            taskType: 'code',
+            estimatedComplexity: complexity,
+          });
+          console.log(`  + #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
+          added++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('(409)')) {
+            console.log(`  ~ #${ghIssue.number}: ${ghIssue.title} (already registered)`);
+            skipped++;
+          } else {
+            console.error(`  ✗ #${ghIssue.number}: ${ghIssue.title} — ${msg}`);
+            failed++;
+          }
+        }
+      }
+
+      if (!opts.dryRun) {
+        console.log(`\nDone: ${added} added, ${skipped} already registered${failed ? `, ${failed} failed` : ''}.`);
+      }
+    });
+
   cmd.addCommand(issueCmd);
 
-  // Keep 'tah project issues' as a shorthand alias
+  // Shorthand alias
   cmd
     .command('issues')
     .description('List issues for a project (alias for "issue list")')

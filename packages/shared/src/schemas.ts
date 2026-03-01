@@ -51,8 +51,8 @@ export const SetBudgetSchema = z.object({
 export const RegisterIssueSchema = z.object({
   projectId: z.string().min(1),
   githubNumber: z.number().int().positive(),
-  title: z.string().min(1),
-  body: z.string(),
+  title: z.string().min(1).optional(),   // fetched from GitHub if omitted
+  body: z.string().optional(),           // fetched from GitHub if omitted
   taskType: TaskTypeSchema,
   estimatedComplexity: IssueComplexitySchema.optional(),
 });

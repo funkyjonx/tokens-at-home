@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   RegisterProjectSchema,
@@ -16,20 +16,25 @@ async function fetchGitHubIssueData(
   owner: string,
   repo: string,
   issueNumber: number,
-): Promise<{ complexity: IssueComplexity | null; body: string | null }> {
+): Promise<{ complexity: IssueComplexity | null; body: string | null; title: string | null }> {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
       { headers: { 'User-Agent': 'tokens-at-home', Accept: 'application/vnd.github.v3+json' } },
     );
-    if (!res.ok) return { complexity: null, body: null };
-    const data = await res.json() as { labels?: Array<{ name: string }>; body?: string | null };
+    if (!res.ok) return { complexity: null, body: null, title: null };
+    const data = await res.json() as {
+      title?: string;
+      body?: string | null;
+      labels?: Array<{ name: string }>;
+    };
     return {
       complexity: mapGitHubLabelsToComplexity((data.labels ?? []).map((l) => l.name)),
       body: data.body ?? null,
+      title: data.title ?? null,
     };
   } catch {
-    return { complexity: null, body: null };
+    return { complexity: null, body: null, title: null };
   }
 }
 
@@ -96,10 +101,22 @@ export function projectRoutes(db: Db) {
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
     const input = parsed.data;
-    const needsGitHub = !input.estimatedComplexity || !input.body;
+
+    // Dedup: return 409 if this issue is already registered for this project
+    const existing = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(and(eq(issues.projectId, project.id), eq(issues.githubNumber, input.githubNumber)))
+      .get();
+    if (existing) return c.json({ error: 'Issue already registered' }, 409);
+
+    const needsGitHub = !input.estimatedComplexity || !input.body || !input.title;
     const gh = needsGitHub
       ? await fetchGitHubIssueData(project.githubOwner, project.githubRepo, input.githubNumber)
-      : { complexity: null, body: null };
+      : { complexity: null, body: null, title: null };
+
+    const title = input.title ?? gh.title;
+    if (!title) return c.json({ error: 'Could not determine issue title — pass --title or check the issue exists on GitHub' }, 400);
 
     const complexity = input.estimatedComplexity ?? gh.complexity ?? 'small';
     const issueBody = input.body || gh.body || '';
@@ -109,7 +126,7 @@ export function projectRoutes(db: Db) {
       id,
       projectId: project.id,
       githubNumber: input.githubNumber,
-      title: input.title,
+      title,
       body: issueBody,
       taskType: input.taskType,
       estimatedComplexity: complexity,
