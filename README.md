@@ -20,8 +20,13 @@ Claude Pro and Max subscribers have a monthly usage allowance most don't fully u
 
 ### Install
 
+> **Early development** — `@tah/cli` is not yet published to npm. Install from source:
+
 ```bash
-npm install -g @tah/cli
+git clone https://github.com/funkyjonx/tokens-at-home.git
+cd tokens-at-home
+pnpm install && pnpm build
+npm install -g ./packages/cli
 ```
 
 ### Register
@@ -106,8 +111,7 @@ tah contributor available
 ### Register your project
 
 ```bash
-npm install -g @tah/cli
-
+# Install from source (see contributor install instructions above)
 tah config coordinatorUrl https://tokens-at-home.fly.dev
 tah contributor register --username your-github-username --languages typescript
 tah project register <owner> <repo> --languages typescript
