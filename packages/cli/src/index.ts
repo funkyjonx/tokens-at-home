@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { Command } from 'commander';
 import { projectCommand } from './commands/project.js';
 import { contributorCommand } from './commands/contributor.js';

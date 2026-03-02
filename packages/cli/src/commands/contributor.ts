@@ -20,7 +20,7 @@ export function contributorCommand(): Command {
   cmd
     .command('register')
     .description('Register as a contributor')
-    .option('--coordinator <url>', 'Coordinator URL', process.env['TAH_COORDINATOR_URL'] ?? 'http://localhost:3000')
+    .option('--coordinator <url>', 'Coordinator URL')
     .option('--username <u>', 'GitHub username')
     .option('--languages <l>', 'Comma-separated languages', 'typescript')
     .option('--autonomy <a>', 'full | review_before_pr', 'review_before_pr')
@@ -36,7 +36,9 @@ export function contributorCommand(): Command {
         process.exit(1);
       }
 
-      const api = new TahApiClient(opts.coordinator);
+      const config = loadConfig();
+      const coordinatorUrl = opts.coordinator ?? config.coordinatorUrl;
+      const api = new TahApiClient(coordinatorUrl);
       const result = await api.post<{ contributor: Contributor; token: string }>('/contributors', {
         githubUsername: username,
         languages: opts.languages.split(',').map((l) => l.trim()),
@@ -44,10 +46,9 @@ export function contributorCommand(): Command {
         maxConcurrent: 1,
       });
 
-      const config = loadConfig();
       saveConfig({
         ...config,
-        coordinatorUrl: opts.coordinator,
+        coordinatorUrl: coordinatorUrl,
         contributorId: result.contributor.id,
         authToken: result.token,
         // Use the coordinator's authoritative autonomy value (new contributors are
