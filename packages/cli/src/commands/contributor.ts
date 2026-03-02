@@ -110,18 +110,26 @@ export function contributorCommand(): Command {
     .command('pledge')
     .description('Pledge capacity to a project')
     .argument('<project-id>', 'Project ID to pledge to')
-    .argument('<budget>', 'Budget percentage (e.g. 80 for 80%)')
-    .action(async (projectId: string, budget: string) => {
+    .argument('<max-tasks>', 'Number of tasks to complete for this project')
+    .option('--max-complexity <c>', 'Max issue complexity to accept: trivial | small | medium | large', 'large')
+    .action(async (projectId: string, maxTasksStr: string, opts: { maxComplexity: string }) => {
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
 
+      const maxTasks = parseInt(maxTasksStr, 10);
+      if (isNaN(maxTasks) || maxTasks < 1) {
+        console.error('max-tasks must be a positive integer');
+        process.exit(1);
+      }
+
       const pledge = await api.post<Pledge>('/contributors/me/pledges', {
         projectId,
-        budgetPercent: parseFloat(budget),
+        maxTasks,
+        maxComplexity: opts.maxComplexity,
       });
 
-      console.log(`Pledged ${pledge.budgetPercent}% budget to project ${pledge.projectId}`);
+      console.log(`Pledged ${pledge.maxTasks} task(s) (up to ${pledge.maxComplexity}) to project ${pledge.projectId}`);
     });
 
   cmd
@@ -140,7 +148,7 @@ export function contributorCommand(): Command {
 
       for (const p of pledges) {
         const status = p.active ? 'active' : 'inactive';
-        console.log(`[${p.id}] Project: ${p.projectId} — ${p.budgetPercent}% (${status})`);
+        console.log(`[${p.id}] Project: ${p.projectId} — ${p.maxTasks} task(s), up to ${p.maxComplexity} (${status})`);
       }
     });
 

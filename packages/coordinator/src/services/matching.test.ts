@@ -30,7 +30,8 @@ const pledge: Pledge = {
   id: 'pledge-1',
   contributorId: 'contrib-1',
   projectId: 'proj-1',
-  budgetPercent: 80,
+  maxTasks: 10,
+  maxComplexity: 'large',
   active: true,
   createdAt: '2024-01-01T00:00:00Z',
 };
@@ -63,11 +64,18 @@ describe('scoreMatch', () => {
     expect(score).toBeNull();
   });
 
-  it('returns null when issue exceeds budget', () => {
-    const smallBudget = { ...pledge, budgetPercent: 1 }; // ~1000 tokens available
-    const largeIssue = { ...issue, estimatedTokens: 80_000 };
-    const score = scoreMatch(contributor, largeIssue, project, smallBudget);
+  it('returns null when issue complexity exceeds pledge maxComplexity', () => {
+    const cappedPledge = { ...pledge, maxComplexity: 'small' as const };
+    const largeIssue = { ...issue, estimatedComplexity: 'large' as const };
+    const score = scoreMatch(contributor, largeIssue, project, cappedPledge);
     expect(score).toBeNull();
+  });
+
+  it('accepts issue at exactly the complexity cap', () => {
+    const cappedPledge = { ...pledge, maxComplexity: 'medium' as const };
+    const mediumIssue = { ...issue, estimatedComplexity: 'medium' as const };
+    const score = scoreMatch(contributor, mediumIssue, project, cappedPledge);
+    expect(score).not.toBeNull();
   });
 
   it('returns null when task type not in project taskTypes', () => {

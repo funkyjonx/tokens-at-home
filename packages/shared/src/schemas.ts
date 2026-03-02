@@ -35,16 +35,13 @@ export type RegisterContributorInput = z.infer<typeof RegisterContributorSchema>
 
 export const CreatePledgeSchema = z.object({
   projectId: z.string().min(1),
-  budgetPercent: z.number().min(1).max(100),
+  maxTasks: z.number().int().min(1),
+  maxComplexity: IssueComplexitySchema.default('large'),
 });
 export type CreatePledgeInput = z.infer<typeof CreatePledgeSchema>;
 
 export const SetAvailableSchema = z.object({
   available: z.boolean(),
-});
-
-export const SetBudgetSchema = z.object({
-  budgetPercent: z.number().min(1).max(100),
 });
 
 // Issue management

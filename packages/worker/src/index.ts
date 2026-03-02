@@ -40,7 +40,7 @@ export async function startWorker(configPath?: string) {
   // Warn if contributor has no active pledges — they'll never receive tasks
   const pledges = await client.getPledges();
   if (pledges.length === 0) {
-    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <budget%>` to pledge capacity to a project.');
+    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <max-tasks>` to pledge capacity to a project.');
   }
 
   console.log('[worker] Started. Polling for tasks...');

@@ -31,7 +31,8 @@
       "Bash(pnpm --filter @tah/daemon build:*)",
       "Bash(git push:*)",
       "Bash(pnpm --filter @tah/worker build:*)",
-      "Bash(rtk proxy find:*)"
+      "Bash(rtk proxy find:*)",
+      "WebFetch(domain:support.claude.com)"
     ]
   }
 }

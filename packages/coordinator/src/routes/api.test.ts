@@ -44,7 +44,8 @@ function createTestDb() {
       id TEXT PRIMARY KEY,
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
       project_id TEXT NOT NULL REFERENCES projects(id),
-      budget_percent REAL NOT NULL,
+      max_tasks INTEGER NOT NULL,
+      max_complexity TEXT NOT NULL DEFAULT 'large',
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -350,7 +351,7 @@ describe('Coordinator API', () => {
       await app.request('/contributors/me/pledges', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ projectId, budgetPercent: 80 }),
+        body: JSON.stringify({ projectId, maxTasks: 10 }),
       });
     });
 

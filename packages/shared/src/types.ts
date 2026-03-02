@@ -23,12 +23,20 @@ export type TaskStatus =
 
 export type ContributorAutonomy = 'full' | 'review_before_pr';
 
-// Token estimates by complexity (rough values for budget matching)
+// Token estimates by complexity (used for display and issue registration)
 export const COMPLEXITY_TOKEN_ESTIMATES: Record<IssueComplexity, number> = {
   trivial: 2_000,
   small: 8_000,
   medium: 25_000,
   large: 80_000,
+};
+
+// Numeric ordering for complexity tiers (used in pledge matching)
+export const COMPLEXITY_ORDER: Record<IssueComplexity, number> = {
+  trivial: 1,
+  small: 2,
+  medium: 3,
+  large: 4,
 };
 
 // Map GitHub issue label names to a complexity tier.
@@ -86,7 +94,8 @@ export interface Pledge {
   id: string;
   contributorId: string;
   projectId: string;
-  budgetPercent: number;
+  maxTasks: number;
+  maxComplexity: IssueComplexity;
   active: boolean;
   createdAt: string;
 }

@@ -62,21 +62,33 @@ describe('RegisterContributorSchema', () => {
 });
 
 describe('CreatePledgeSchema', () => {
-  it('rejects budget > 100', () => {
+  it('rejects maxTasks = 0', () => {
     expect(() =>
-      CreatePledgeSchema.parse({ projectId: 'p1', budgetPercent: 101 }),
+      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 0 }),
     ).toThrow();
   });
 
-  it('rejects budget = 0', () => {
+  it('rejects non-integer maxTasks', () => {
     expect(() =>
-      CreatePledgeSchema.parse({ projectId: 'p1', budgetPercent: 0 }),
+      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 2.5 }),
     ).toThrow();
   });
 
-  it('accepts valid budget', () => {
-    const result = CreatePledgeSchema.parse({ projectId: 'p1', budgetPercent: 80 });
-    expect(result.budgetPercent).toBe(80);
+  it('accepts valid maxTasks with default maxComplexity', () => {
+    const result = CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 5 });
+    expect(result.maxTasks).toBe(5);
+    expect(result.maxComplexity).toBe('large');
+  });
+
+  it('accepts explicit maxComplexity', () => {
+    const result = CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 3, maxComplexity: 'medium' });
+    expect(result.maxComplexity).toBe('medium');
+  });
+
+  it('rejects invalid maxComplexity', () => {
+    expect(() =>
+      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 3, maxComplexity: 'huge' }),
+    ).toThrow();
   });
 });
 

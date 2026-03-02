@@ -40,7 +40,8 @@ export const pledges = sqliteTable('pledges', {
   projectId: text('project_id')
     .notNull()
     .references(() => projects.id),
-  budgetPercent: real('budget_percent').notNull(),
+  maxTasks: integer('max_tasks').notNull(),
+  maxComplexity: text('max_complexity').notNull().default('large'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });

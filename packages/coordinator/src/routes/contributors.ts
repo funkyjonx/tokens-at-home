@@ -98,7 +98,8 @@ export function contributorRoutes(db: Db) {
       id,
       contributorId: contributor.id,
       projectId: parsed.data.projectId,
-      budgetPercent: parsed.data.budgetPercent,
+      maxTasks: parsed.data.maxTasks,
+      maxComplexity: parsed.data.maxComplexity,
       active: true,
     });
 

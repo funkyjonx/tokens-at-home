@@ -4,7 +4,7 @@ import { contributors, issues, pledges, projects, tasks } from '../db/schema.js'
 import type { Issue, Project, Contributor, Pledge } from '@tah/shared';
 
 const TERMINAL_STATUSES = ['completed', 'failed'];
-import { COMPLEXITY_TOKEN_ESTIMATES } from '@tah/shared';
+import { COMPLEXITY_ORDER } from '@tah/shared';
 
 // Score a (contributor, issue) pair for matching
 // Higher = better match. Returns null if the pair is ineligible.
@@ -17,10 +17,8 @@ export function scoreMatch(
   // Trust check
   if (contributor.trustScore < project.trustThreshold) return null;
 
-  // Budget check: rough token estimate must fit within pledge
-  // For MVP we treat budgetPercent as the fraction of a 100k token budget
-  const estimatedAvailable = (pledge.budgetPercent / 100) * 100_000;
-  if (issue.estimatedTokens > estimatedAvailable) return null;
+  // Complexity cap: reject issues above the contributor's stated max complexity
+  if (COMPLEXITY_ORDER[issue.estimatedComplexity] > COMPLEXITY_ORDER[pledge.maxComplexity]) return null;
 
   // Task type check
   if (!project.taskTypes.includes(issue.taskType)) return null;
@@ -31,18 +29,14 @@ export function scoreMatch(
   const overlap = projectLangs.filter((l) => contributorLangs.has(l)).length;
   const langScore = projectLangs.length > 0 ? overlap / projectLangs.length : 0.5;
 
-  // Complexity fit: prefer issues at the top of contributor budget without wasting it
-  const complexityTokens = COMPLEXITY_TOKEN_ESTIMATES[issue.estimatedComplexity];
-  const budgetUtilization = complexityTokens / estimatedAvailable;
-  // Peak score around 0.5-0.8 utilization
-  const utilizationScore = budgetUtilization <= 1
-    ? 1 - Math.abs(budgetUtilization - 0.65)
-    : 0;
+  // Complexity preference (0-1): prefer larger issues within the cap
+  // (more meaningful work > trivial busywork)
+  const complexityScore = COMPLEXITY_ORDER[issue.estimatedComplexity] / 4;
 
   // Trust bonus (0-0.2): reward higher-trust contributors
   const trustBonus = contributor.trustScore * 0.2;
 
-  return langScore * 0.5 + utilizationScore * 0.3 + trustBonus;
+  return langScore * 0.5 + complexityScore * 0.3 + trustBonus;
 }
 
 // Find the best (contributor, issue) pairs for auto-matching.
@@ -80,20 +74,21 @@ export async function findBestMatches(
   const allProjects = await db.select().from(projects).all();
   const projectMap = new Map(allProjects.map((p) => [p.id, p]));
 
-  // Count active tasks per contributor
-  const activeTasks = await db
-    .select()
+  // Count tasks per contributor (for maxConcurrent) and per pledge (for maxTasks)
+  const allTasks = await db
+    .select({ contributorId: tasks.contributorId, pledgeId: tasks.pledgeId, status: tasks.status })
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.status, 'dispatched'),
-      ),
-    )
     .all();
 
   const activeTaskCount = new Map<string, number>();
-  for (const t of activeTasks) {
-    activeTaskCount.set(t.contributorId, (activeTaskCount.get(t.contributorId) ?? 0) + 1);
+  const taskCountByPledge = new Map<string, number>();
+  for (const t of allTasks) {
+    if (!TERMINAL_STATUSES.includes(t.status)) {
+      activeTaskCount.set(t.contributorId, (activeTaskCount.get(t.contributorId) ?? 0) + 1);
+    }
+    if (t.pledgeId) {
+      taskCountByPledge.set(t.pledgeId, (taskCountByPledge.get(t.pledgeId) ?? 0) + 1);
+    }
   }
 
   const candidates: Array<{ contributorId: string; issueId: string; pledgeId: string; score: number }> = [];
@@ -106,6 +101,8 @@ export async function findBestMatches(
     const contributorPledges = activePledges.filter((p) => p.contributorId === contributor.id);
 
     for (const pledge of contributorPledges) {
+      // Skip exhausted pledges
+      if ((taskCountByPledge.get(pledge.id) ?? 0) >= pledge.maxTasks) continue;
       const project = projectMap.get(pledge.projectId);
       if (!project) continue;
 
@@ -191,6 +188,19 @@ export async function findMatchForContributor(
     .all();
   if (contributorPledges.length === 0) return null;
 
+  // Count tasks per pledge (active + completed) to check against maxTasks
+  const pledgeTasks = await db
+    .select({ pledgeId: tasks.pledgeId, status: tasks.status })
+    .from(tasks)
+    .where(eq(tasks.contributorId, contributorId))
+    .all();
+  const taskCountByPledge = new Map<string, number>();
+  for (const t of pledgeTasks) {
+    if (t.pledgeId) {
+      taskCountByPledge.set(t.pledgeId, (taskCountByPledge.get(t.pledgeId) ?? 0) + 1);
+    }
+  }
+
   // Build typed contributor once
   const { cycleResetDate: rawCycleReset, ...contributorRest } = contributor;
   const contributorTyped: Contributor = {
@@ -203,6 +213,9 @@ export async function findMatchForContributor(
   const candidates: Array<{ issueId: string; pledgeId: string; score: number }> = [];
 
   for (const pledge of contributorPledges) {
+    // Skip exhausted pledges
+    const tasksForPledge = taskCountByPledge.get(pledge.id) ?? 0;
+    if (tasksForPledge >= pledge.maxTasks) continue;
     const project = await db
       .select()
       .from(projects)

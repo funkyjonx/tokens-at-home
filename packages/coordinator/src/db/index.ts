@@ -52,7 +52,8 @@ export function initSchema(_db: Db) {
       id TEXT PRIMARY KEY,
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
       project_id TEXT NOT NULL REFERENCES projects(id),
-      budget_percent REAL NOT NULL,
+      max_tasks INTEGER NOT NULL,
+      max_complexity TEXT NOT NULL DEFAULT 'large',
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

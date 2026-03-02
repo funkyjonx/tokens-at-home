@@ -4,7 +4,7 @@
 
 Claude Pro and Max subscribers have a monthly usage allowance most don't fully use. Tokens at Home is a marketplace where contributors pledge that unused capacity to open source projects.
 
-**As a contributor**, you choose projects and set a budget. The coordinator matches you to issues that fit. Your machine does the work autonomously using Claude Code — you review the diff before anything becomes a PR.
+**As a contributor**, you choose projects and say how many tasks you want to do and how large. The coordinator matches you to fitting issues. Your machine does the work autonomously using Claude Code — you review the diff before anything becomes a PR.
 
 **As a project owner**, you label GitHub issues with `tah` to make them available. You receive PRs like from any other contributor. Claude never has merge access.
 
@@ -38,11 +38,14 @@ tah contributor register --username your-github-username --languages typescript,
 # Browse available projects
 tah project list
 
-# Pledge 80% of your remaining budget to a project
-tah contributor pledge <project-id> 80
+# "I'll do 5 tasks for this project, any size"
+tah contributor pledge <project-id> 5
+
+# "I'll do 3 tasks, nothing bigger than medium"
+tah contributor pledge <project-id> 3 --max-complexity medium
 ```
 
-You can pledge to multiple projects with split budgets. The coordinator picks issues that fit your budget — you won't be assigned something you can't cover.
+You can pledge to multiple projects. The coordinator matches you to issues that fit your complexity cap — you won't be assigned something larger than you've asked for.
 
 ### Start contributing
 
@@ -65,23 +68,26 @@ Submit PR? [y/N]
 ### Contributor CLI
 
 ```
-tah contributor register          Register your profile
-tah contributor profile           Show your profile and trust score
-tah contributor pledge <id> <pct> Pledge % of budget to a project
-tah contributor pledges           List your active pledges
-tah contributor available         Mark yourself available for tasks
-tah contributor unavailable       Pause task assignment
+tah contributor register                      Register your profile
+tah contributor profile                       Show your profile and trust score
+tah contributor pledge <id> <n> [--max-complexity <c>]
+                                              Pledge N tasks to a project
+tah contributor pledges                       List your active pledges
+tah contributor available                     Mark yourself available for tasks
+tah contributor unavailable                   Pause task assignment
 
-tah worker start                  Start the worker (foreground — keep terminal open)
+tah worker start                              Start the worker (foreground — keep terminal open)
 ```
 
-### How your capacity is used
+### How capacity is used
 
-There's no API to read your remaining Claude allowance, so you self-report by setting a budget percentage when you pledge. The coordinator tracks tokens consumed per task (from Claude's usage output) and deducts from your stated budget. When your budget runs low, set yourself unavailable until your cycle resets:
+When you pledge, you say how many tasks you want to complete (`maxTasks`) and the largest issue size you'll accept (`maxComplexity`: trivial, small, medium, or large). Once that many tasks are completed for that pledge, the pledge is exhausted and you'll stop receiving work from that project. To contribute more, create a new pledge.
+
+When you want to pause:
 
 ```bash
 tah contributor unavailable
-# ... billing cycle resets ...
+# ... take a break ...
 tah contributor available
 ```
 
@@ -117,7 +123,7 @@ tah project issue add <project-id> <issue-number> "Fix the login bug" \
   --type code
 ```
 
-Complexity options: `trivial` (~2k tokens), `small` (~8k), `medium` (~25k), `large` (~80k). This determines which contributors can be matched to the issue based on their budget.
+Complexity options: `trivial` (tiny, well-scoped), `small` (a few hours), `medium` (half a day), `large` (substantial change). Contributors choose which sizes they're willing to take on when they pledge.
 
 ### That's it
 
@@ -143,7 +149,6 @@ tah project issues <id>                          List issues and their status
 - Human review before PR submission
 
 **Coming soon**
-- Automatic budget-aware matching
 - Trust scores — new contributors get small issues, earn larger ones via merged PRs
 - More task types: `tests`, `docs`, `deps`, `review`
 - GitHub webhook integration for real-time issue sync
