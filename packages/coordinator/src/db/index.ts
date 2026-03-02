@@ -95,4 +95,17 @@ export function initSchema(_db: Db) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Additive column migrations (safe to re-run; errors mean column already exists)
+  const addColumns = [
+    "ALTER TABLE pledges ADD COLUMN max_tasks INTEGER NOT NULL DEFAULT 10",
+    "ALTER TABLE pledges ADD COLUMN max_complexity TEXT NOT NULL DEFAULT 'large'",
+    "ALTER TABLE pledges ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE projects ADD COLUMN task_types TEXT NOT NULL DEFAULT '[\"code\"]'",
+    "ALTER TABLE projects ADD COLUMN trust_threshold REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE projects ADD COLUMN claude_md TEXT",
+  ];
+  for (const stmt of addColumns) {
+    try { sqlite.exec(stmt); } catch { /* column already exists */ }
+  }
 }

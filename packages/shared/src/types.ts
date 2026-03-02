@@ -150,3 +150,10 @@ export interface FailTaskPayload {
   errorDetails: string;
   tokensUsed?: number;
 }
+
+export type ActivityEvent =
+  | { type: 'project_registered'; ts: string; actor: string; project: string; projectId: string }
+  | { type: 'contributor_joined'; ts: string; actor: string }
+  | { type: 'pledge_created'; ts: string; actor: string; project: string; maxTasks: number; maxComplexity: string }
+  | { type: 'task_completed'; ts: string; actor: string; project: string; issueNumber: number; tokensUsed: number; prUrl: string }
+  | { type: 'task_failed'; ts: string; actor: string; project: string; issueNumber: number; errorDetails?: string };

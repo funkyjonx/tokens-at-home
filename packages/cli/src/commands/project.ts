@@ -6,6 +6,82 @@ import { TahApiClient } from '../api.js';
 import { mapGitHubLabelsToComplexity } from '@tah/shared';
 import type { Project, Issue } from '@tah/shared';
 
+async function syncProjectIssues(api: TahApiClient, project: Project, dryRun: boolean): Promise<void> {
+  console.log(`Syncing "${project.issueLabel}" issues from ${project.githubOwner}/${project.githubRepo}...`);
+
+  const SYNC_LIMIT = 500;
+  const result = spawnSync(
+    'gh',
+    [
+      'issue', 'list',
+      '--repo', `${project.githubOwner}/${project.githubRepo}`,
+      '--label', project.issueLabel,
+      '--state', 'open',
+      '--json', 'number,title,body,labels',
+      '--limit', String(SYNC_LIMIT),
+    ],
+    { encoding: 'utf-8' },
+  );
+
+  if (result.status !== 0) {
+    console.error(`gh issue list failed: ${result.stderr}`);
+    return;
+  }
+
+  const ghIssues = JSON.parse(result.stdout) as Array<{
+    number: number;
+    title: string;
+    body: string;
+    labels: Array<{ name: string }>;
+  }>;
+
+  if (ghIssues.length === 0) {
+    console.log(`No open issues found with label "${project.issueLabel}".`);
+    return;
+  }
+
+  console.log(`Found ${ghIssues.length} issue(s).${ghIssues.length === SYNC_LIMIT ? ` (hit limit of ${SYNC_LIMIT} — there may be more; run sync again after processing these)` : ''}\n`);
+
+  let added = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const ghIssue of ghIssues) {
+    const labelNames = ghIssue.labels.map((l) => l.name);
+    const complexity = mapGitHubLabelsToComplexity(labelNames) ?? 'small';
+
+    if (dryRun) {
+      console.log(`  [dry-run] #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
+      continue;
+    }
+
+    try {
+      await api.post<Issue>(`/projects/${project.id}/issues`, {
+        githubNumber: ghIssue.number,
+        title: ghIssue.title,
+        body: ghIssue.body ?? '',
+        taskType: 'code',
+        estimatedComplexity: complexity,
+      });
+      console.log(`  + #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
+      added++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('(409)')) {
+        console.log(`  ~ #${ghIssue.number}: ${ghIssue.title} (already registered)`);
+        skipped++;
+      } else {
+        console.error(`  ✗ #${ghIssue.number}: ${ghIssue.title} — ${msg}`);
+        failed++;
+      }
+    }
+  }
+
+  if (!dryRun) {
+    console.log(`\nDone: ${added} added, ${skipped} already registered${failed ? `, ${failed} failed` : ''}.`);
+  }
+}
+
 export function projectCommand(): Command {
   const cmd = new Command('project').description('Manage projects');
 
@@ -95,8 +171,16 @@ export function projectCommand(): Command {
         return;
       }
 
-      for (const p of projects) {
-        console.log(`[${p.id}] ${p.githubOwner}/${p.githubRepo} (label: ${p.issueLabel})`);
+      for (let i = 0; i < projects.length; i++) {
+        const p = projects[i];
+        const name = `${p.githubOwner}/${p.githubRepo}`;
+        const id = `[${p.id}]`;
+        console.log(`${name.padEnd(48)} ${id}`);
+        console.log(`  Languages:  ${p.languages.join(', ')}`);
+        console.log(`  Tasks:      ${p.taskTypes.join(', ')}`);
+        const trustLabel = p.trustThreshold === 0 ? `${p.trustThreshold} (open to all)` : String(p.trustThreshold);
+        console.log(`  Trust req:  ${trustLabel}`);
+        if (i < projects.length - 1) console.log('');
       }
     });
 
@@ -159,86 +243,36 @@ export function projectCommand(): Command {
   issueCmd
     .command('sync')
     .description('Sync all open labeled issues from GitHub into the coordinator')
-    .argument('<project-id>', 'Project ID')
+    .argument('[project-id]', 'Project ID (omit when using --all)')
     .option('--dry-run', 'Print what would be synced without registering anything')
-    .action(async (projectId: string, opts: { dryRun?: boolean }) => {
+    .option('--all', 'Sync all projects registered by you')
+    .action(async (projectId: string | undefined, opts: { dryRun?: boolean; all?: boolean }) => {
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
 
-      const project = await api.get<Project>(`/projects/${projectId}`);
-      console.log(`Syncing "${project.issueLabel}" issues from ${project.githubOwner}/${project.githubRepo}...`);
-
-      const SYNC_LIMIT = 500;
-      const result = spawnSync(
-        'gh',
-        [
-          'issue', 'list',
-          '--repo', `${project.githubOwner}/${project.githubRepo}`,
-          '--label', project.issueLabel,
-          '--state', 'open',
-          '--json', 'number,title,body,labels',
-          '--limit', String(SYNC_LIMIT),
-        ],
-        { encoding: 'utf-8' },
-      );
-
-      if (result.status !== 0) {
-        console.error(`gh issue list failed: ${result.stderr}`);
-        process.exit(1);
-      }
-
-      const ghIssues = JSON.parse(result.stdout) as Array<{
-        number: number;
-        title: string;
-        body: string;
-        labels: Array<{ name: string }>;
-      }>;
-
-      if (ghIssues.length === 0) {
-        console.log(`No open issues found with label "${project.issueLabel}".`);
-        return;
-      }
-
-      console.log(`Found ${ghIssues.length} issue(s).${ghIssues.length === SYNC_LIMIT ? ` (hit limit of ${SYNC_LIMIT} — there may be more; run sync again after processing these)` : ''}\n`);
-
-      let added = 0;
-      let skipped = 0;
-      let failed = 0;
-
-      for (const ghIssue of ghIssues) {
-        const labelNames = ghIssue.labels.map((l) => l.name);
-        const complexity = mapGitHubLabelsToComplexity(labelNames) ?? 'small';
-
-        if (opts.dryRun) {
-          console.log(`  [dry-run] #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
-          continue;
+      if (opts.all) {
+        if (!config.githubUsername) {
+          console.error('GitHub username not found in config. Run `tah contributor register` first.');
+          process.exit(1);
         }
-
-        try {
-          await api.post<Issue>(`/projects/${projectId}/issues`, {
-            githubNumber: ghIssue.number,
-            title: ghIssue.title,
-            body: ghIssue.body ?? '',
-            taskType: 'code',
-            estimatedComplexity: complexity,
-          });
-          console.log(`  + #${ghIssue.number}: ${ghIssue.title} (${complexity})`);
-          added++;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('(409)')) {
-            console.log(`  ~ #${ghIssue.number}: ${ghIssue.title} (already registered)`);
-            skipped++;
-          } else {
-            console.error(`  ✗ #${ghIssue.number}: ${ghIssue.title} — ${msg}`);
-            failed++;
-          }
+        const allProjects = await api.get<Project[]>('/projects');
+        const mine = allProjects.filter((p) => p.registeredBy === config.githubUsername);
+        if (mine.length === 0) {
+          console.log('No projects registered by you.');
+          return;
         }
-      }
-
-      if (!opts.dryRun) {
-        console.log(`\nDone: ${added} added, ${skipped} already registered${failed ? `, ${failed} failed` : ''}.`);
+        for (let i = 0; i < mine.length; i++) {
+          if (i > 0) console.log('');
+          await syncProjectIssues(api, mine[i], opts.dryRun ?? false);
+        }
+      } else {
+        if (!projectId) {
+          console.error('Provide a project ID or use --all to sync all your projects.');
+          process.exit(1);
+        }
+        const project = await api.get<Project>(`/projects/${projectId}`);
+        await syncProjectIssues(api, project, opts.dryRun ?? false);
       }
     });
 

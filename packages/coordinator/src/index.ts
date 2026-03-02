@@ -6,6 +6,7 @@ import { getDb, initSchema } from './db/index.js';
 import { projectRoutes } from './routes/projects.js';
 import { contributorRoutes } from './routes/contributors.js';
 import { taskRoutes, abandonStaleTasks } from './routes/tasks.js';
+import { eventRoutes } from './routes/events.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
@@ -26,6 +27,7 @@ app.get('/health', (c) => c.json({ ok: true, version: '0.0.1' }));
 app.route('/projects', projectRoutes(db));
 app.route('/contributors', contributorRoutes(db));
 app.route('/tasks', taskRoutes(db));
+app.route('/events', eventRoutes(db));
 
 // Heartbeat sweep: abandon stale tasks every 60s
 setInterval(async () => {

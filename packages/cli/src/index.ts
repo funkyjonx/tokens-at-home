@@ -4,6 +4,7 @@ import { contributorCommand } from './commands/contributor.js';
 import { workerCommand } from './commands/worker.js';
 import { taskCommand } from './commands/task.js';
 import { configCommand } from './commands/config.js';
+import { activityCommand } from './commands/activity.js';
 import { TahApiError } from './api.js';
 import { loadConfig } from './config.js';
 
@@ -19,6 +20,7 @@ program.addCommand(projectCommand());
 program.addCommand(contributorCommand());
 program.addCommand(workerCommand());
 program.addCommand(taskCommand());
+program.addCommand(activityCommand());
 
 function handleError(err: unknown): never {
   if (err instanceof TahApiError) {
