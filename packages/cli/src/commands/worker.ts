@@ -21,6 +21,7 @@ export function workerCommand(): Command {
       });
 
       await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+      process.exit(child.exitCode ?? 1);
     });
 
   return cmd;
@@ -41,6 +42,5 @@ function findWorkerBin(): string {
     if (existsSync(candidate)) return candidate;
   }
 
-  // Fall back to source (requires tsx in PATH)
-  return join(process.cwd(), 'packages', 'worker', 'src', 'index.ts');
+  throw new Error("Worker binary not found. Run 'pnpm build' in the monorepo or ensure @tah/worker is installed.");
 }

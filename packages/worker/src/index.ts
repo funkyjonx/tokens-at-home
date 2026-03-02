@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { execFileSync } from 'child_process';
 import { WorkerConfigSchema } from '@tah/shared';
 import { CoordinatorClient } from './poller.js';
 import { executeTask, type ExecutionResult } from './executor.js';
@@ -27,7 +28,25 @@ process.on('SIGTERM', () => {
   if (currentHeartbeatTimer) clearInterval(currentHeartbeatTimer);
 });
 
+function preflight(): void {
+  try {
+    execFileSync('claude', ['--version'], { timeout: 5_000, stdio: 'ignore' });
+  } catch {
+    console.error("'claude' CLI not found. Install it from https://claude.ai/claude-code");
+    process.exit(1);
+  }
+
+  try {
+    execFileSync('gh', ['auth', 'status'], { timeout: 5_000, stdio: 'ignore' });
+  } catch {
+    console.error("'gh' CLI is not authenticated. Run 'gh auth login' first.");
+    process.exit(1);
+  }
+}
+
 export async function startWorker(configPath?: string) {
+  preflight();
+
   const config = await loadConfig(configPath);
 
   const workDir = config.workDir ?? DEFAULT_WORK_DIR;

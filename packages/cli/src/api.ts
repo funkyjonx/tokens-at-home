@@ -1,5 +1,15 @@
 // Thin API client for the coordinator
 
+export class TahApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'TahApiError';
+  }
+}
+
 export class TahApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -16,50 +26,66 @@ export class TahApiClient {
     return `${this.baseUrl}${path}`;
   }
 
+  private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetch(url, { ...options, signal: AbortSignal.timeout(15_000) });
+    } catch (err) {
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        throw new Error('Request to coordinator timed out.');
+      }
+      throw new Error(`Could not reach coordinator at ${this.baseUrl}. Is it running?`);
+    }
+    return res;
+  }
+
+  private async throwHttpError(method: string, path: string, res: Response): Promise<never> {
+    let errorMessage: string;
+    try {
+      const body = await res.json() as { error?: string };
+      errorMessage = body.error ?? res.statusText ?? String(res.status);
+    } catch {
+      try {
+        errorMessage = await res.text();
+      } catch {
+        errorMessage = res.statusText ?? String(res.status);
+      }
+    }
+    throw new TahApiError(`${method} ${path} failed (${res.status}): ${errorMessage}`, res.status);
+  }
+
   async post<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await this.fetchWithTimeout(this.url(path), {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`POST ${path} failed (${res.status}): ${err}`);
-    }
+    if (!res.ok) return this.throwHttpError('POST', path, res);
     return res.json() as Promise<T>;
   }
 
   async get<T>(path: string): Promise<T> {
-    const res = await fetch(this.url(path), { headers: this.headers });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`GET ${path} failed (${res.status}): ${err}`);
-    }
+    const res = await this.fetchWithTimeout(this.url(path), { headers: this.headers });
+    if (!res.ok) return this.throwHttpError('GET', path, res);
     return res.json() as Promise<T>;
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await this.fetchWithTimeout(this.url(path), {
       method: 'PUT',
       headers: this.headers,
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`PUT ${path} failed (${res.status}): ${err}`);
-    }
+    if (!res.ok) return this.throwHttpError('PUT', path, res);
     return res.json() as Promise<T>;
   }
 
   async delete<T>(path: string): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await this.fetchWithTimeout(this.url(path), {
       method: 'DELETE',
       headers: this.headers,
     });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`DELETE ${path} failed (${res.status}): ${err}`);
-    }
+    if (!res.ok) return this.throwHttpError('DELETE', path, res);
     return res.json() as Promise<T>;
   }
 }
