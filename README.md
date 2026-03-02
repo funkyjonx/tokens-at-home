@@ -152,6 +152,7 @@ tah project issues <id>                          List issues and their status
 - Trust scores — new contributors get small issues, earn larger ones via merged PRs
 - More task types: `tests`, `docs`, `deps`, `review`
 - GitHub webhook integration for real-time issue sync
+- Token-budget awareness: once [anthropics/claude-code#21943](https://github.com/anthropics/claude-code/issues/21943) lands (programmatic access to Pro/Max usage data), optionally skip tasks whose `estimatedTokens` would exceed remaining quota
 
 **Later**
 - Web dashboard and contributor leaderboard
@@ -160,6 +161,14 @@ tah project issues <id>                          List issues and their status
 
 ---
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, monorepo structure, and how to submit a PR.
+
+Issues labelled [`good first issue`](https://github.com/funkyjonx/tokens-at-home/labels/good%20first%20issue) are a good place to start.
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
