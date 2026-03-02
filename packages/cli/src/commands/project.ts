@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { createInterface } from 'readline/promises';
+import { stdin as input, stdout as output } from 'process';
 import { loadConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
 import { mapGitHubLabelsToComplexity } from '@tah/shared';
@@ -82,6 +84,26 @@ async function syncProjectIssues(api: TahApiClient, project: Project, dryRun: bo
   }
 }
 
+async function confirmProjectRegistration(owner: string, repo: string, languages: string[]): Promise<boolean> {
+  console.log('Project to register:');
+  console.log(`  Owner:     ${owner}`);
+  console.log(`  Repo:      ${repo}`);
+  console.log(`  Languages: ${languages.join(', ')}`);
+
+  if (!input.isTTY || !output.isTTY) {
+    console.log('\nSubmit? [y/N] n');
+    return false;
+  }
+
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await rl.question('\nSubmit? [y/N] ');
+    return answer.trim().toLowerCase() === 'y';
+  } finally {
+    rl.close();
+  }
+}
+
 export function projectCommand(): Command {
   const cmd = new Command('project').description('Manage projects');
 
@@ -139,6 +161,12 @@ export function projectCommand(): Command {
           console.error(`CLAUDE.md content exceeds 4000 character limit (${claudeMd.length} chars). Trim it before registering.`);
           process.exit(1);
         }
+      }
+
+      const confirmed = await confirmProjectRegistration(owner, repo, languages);
+      if (!confirmed) {
+        console.log('Canceled. Project was not submitted.');
+        return;
       }
 
       const project = await api.post<Project>('/projects', {
