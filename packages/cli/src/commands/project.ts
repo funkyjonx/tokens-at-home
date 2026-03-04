@@ -113,6 +113,7 @@ export function projectCommand(): Command {
 
   cmd
     .command('register')
+    .alias('add')
     .description('Register a GitHub repository as a project')
     .argument('<owner>', 'GitHub owner (user or org)')
     .argument('<repo>', 'GitHub repository name')
