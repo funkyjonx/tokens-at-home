@@ -46,6 +46,7 @@ function createTestDb() {
       project_id TEXT NOT NULL REFERENCES projects(id),
       max_tasks INTEGER NOT NULL,
       max_complexity TEXT NOT NULL DEFAULT 'large',
+      budget_percent INTEGER NOT NULL DEFAULT 100,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
