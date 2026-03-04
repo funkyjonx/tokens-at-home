@@ -16,7 +16,7 @@ export interface CliConfig {
   githubUsername?: string;
 }
 
-export const DEFAULT_COORDINATOR_URL = process.env['TAH_COORDINATOR_URL'] ?? 'http://localhost:3000';
+export const DEFAULT_COORDINATOR_URL = process.env['TAH_COORDINATOR_URL'] ?? 'https://tokens-at-home.fly.dev';
 
 export function loadConfig(): CliConfig {
   if (!existsSync(CONFIG_PATH)) {
