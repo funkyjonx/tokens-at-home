@@ -1,4 +1,4 @@
-import { spawnSync, execSync, type SpawnSyncReturns } from 'child_process';
+import { spawn, spawnSync, type SpawnSyncReturns } from 'child_process';
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { Issue, Project, Task } from '@tah/shared';
@@ -91,23 +91,20 @@ export async function executeTask(
   const allowedTools = formatAllowedTools(sandbox.allowedTools);
   const promptContent = readFileSync(promptFile, 'utf-8');
 
-  log(sandbox.logFile, `Invoking: claude --output-format json --allowedTools "..." -p "..."`);
+  log(sandbox.logFile, `Invoking Claude...`);
 
-  const claudeResult = spawnSync(
-    'claude',
-    ['--output-format', 'json', '--allowedTools', allowedTools, '-p', promptContent],
-    { cwd: repoPath, stdio: 'pipe', encoding: 'buffer', timeout: 10 * 60 * 1000 },
+  const { rawOutput, exitCode, stderr } = await runClaude(
+    ['--output-format', 'stream-json', '--allowedTools', allowedTools, '-p', promptContent],
+    repoPath,
+    sandbox.logFile,
   );
-  const rawOutput = claudeResult.stdout.toString();
-  const exitCode = claudeResult.status ?? 1;
 
   // Write raw output to log
   writeFileSync(join(sandbox.taskWorkDir, 'claude-output.json'), rawOutput, 'utf-8');
 
   if (exitCode !== 0) {
-    const err = claudeResult.stderr.toString();
-    log(sandbox.logFile, `Claude exited with code ${exitCode}: ${err}`);
-    return { success: false, error: `Claude failed (exit ${exitCode}): ${err}` };
+    log(sandbox.logFile, `Claude exited with code ${exitCode}: ${stderr}`);
+    return { success: false, error: `Claude failed (exit ${exitCode}): ${stderr}` };
   }
 
   // Parse Claude's JSON output
@@ -123,42 +120,117 @@ export async function executeTask(
   };
 }
 
+async function runClaude(
+  args: string[],
+  cwd: string,
+  logFile: string,
+): Promise<{ rawOutput: string; exitCode: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('claude', args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const lines: string[] = [];
+    const stderrChunks: Buffer[] = [];
+    let lineBuffer = '';
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      lineBuffer += chunk.toString('utf-8');
+      const parts = lineBuffer.split('\n');
+      lineBuffer = parts.pop() ?? '';
+      for (const line of parts) {
+        if (!line.trim()) continue;
+        lines.push(line);
+        try {
+          const event = JSON.parse(line) as Record<string, unknown>;
+          const progress = extractProgress(event);
+          if (progress) log(logFile, progress);
+        } catch { /* non-JSON line */ }
+      }
+    });
+
+    proc.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+
+    const timeout = setTimeout(() => {
+      proc.kill();
+      reject(new Error('Claude timed out after 10 minutes'));
+    }, 10 * 60 * 1000);
+
+    proc.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve({
+        rawOutput: lines.join('\n'),
+        exitCode: code ?? 1,
+        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
+      });
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+}
+
+function extractProgress(event: Record<string, unknown>): string | null {
+  if (event['type'] !== 'assistant') return null;
+  const msg = event['message'] as { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } | undefined;
+  for (const block of msg?.content ?? []) {
+    if (block.type === 'tool_use' && block.name) {
+      return formatToolCall(block.name, block.input ?? {});
+    }
+  }
+  return null;
+}
+
+function formatToolCall(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case 'Read':    return `  Read    ${input['file_path'] ?? ''}`;
+    case 'Write':   return `  Write   ${input['file_path'] ?? ''}`;
+    case 'Edit':    return `  Edit    ${input['file_path'] ?? ''}`;
+    case 'Glob':    return `  Glob    ${input['pattern'] ?? ''}`;
+    case 'Grep':    return `  Grep    ${input['pattern'] ?? ''}`;
+    case 'Bash':    return `  Bash    ${String(input['command'] ?? '').split('\n')[0].slice(0, 80)}`;
+    default:        return `  ${name}`;
+  }
+}
+
 function parseClaudeOutput(rawOutput: string): { summary: string; tokensUsed: number } {
   if (!rawOutput.trim()) {
     throw new Error('Claude produced no output');
   }
 
-  let parsed: { result?: string; usage?: { input_tokens?: number; output_tokens?: number } };
-  try {
-    parsed = JSON.parse(rawOutput) as typeof parsed;
-  } catch {
-    throw new Error(`Claude output was not valid JSON (got ${rawOutput.slice(0, 200)})`);
-  }
-
-  const resultText = parsed.result ?? '';
-  const tokensUsed =
-    (parsed.usage?.input_tokens ?? 0) + (parsed.usage?.output_tokens ?? 0);
-
-  if (tokensUsed === 0) {
-    throw new Error('Claude reported 0 tokens used — output may be malformed');
-  }
-
-  // Try to extract the JSON summary from Claude's output
-  const jsonMatch = resultText.match(/```json\n([\s\S]*?)\n```/);
-  if (jsonMatch?.[1]) {
+  // stream-json format: find the result event (last line with type=result)
+  for (const line of rawOutput.split('\n').reverse()) {
+    if (!line.trim()) continue;
     try {
-      const inner = JSON.parse(jsonMatch[1]) as { summary?: string };
-      return {
-        summary: inner.summary ?? resultText.slice(0, 500),
-        tokensUsed,
-      };
-    } catch {
-      // fall through to plain text summary
+      const event = JSON.parse(line) as Record<string, unknown>;
+      if (event['type'] !== 'result') continue;
+
+      const resultText = String(event['result'] ?? '');
+      const usage = event['usage'] as { input_tokens?: number; output_tokens?: number } | undefined;
+      const tokensUsed = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+
+      if (tokensUsed === 0) {
+        throw new Error('Claude reported 0 tokens used — output may be malformed');
+      }
+
+      // Try to extract the JSON summary from Claude's result text
+      const jsonMatch = resultText.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch?.[1]) {
+        try {
+          const inner = JSON.parse(jsonMatch[1]) as { summary?: string };
+          return { summary: inner.summary ?? resultText.slice(0, 500), tokensUsed };
+        } catch { /* fall through */ }
+      }
+
+      return { summary: resultText.slice(0, 500) || 'Task completed', tokensUsed };
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('0 tokens')) throw e;
+      // not JSON or not the result event, keep scanning
     }
   }
 
-  return {
-    summary: resultText.slice(0, 500) || 'Task completed',
-    tokensUsed,
-  };
+  throw new Error(`No result event found in Claude output (got ${rawOutput.slice(0, 200)})`);
 }
