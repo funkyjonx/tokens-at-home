@@ -56,10 +56,15 @@ export async function startWorker(configPath?: string) {
 
   const client = new CoordinatorClient(config);
 
-  // Warn if contributor has no active pledges — they'll never receive tasks
-  const pledges = await client.getPledges();
-  if (pledges.length === 0) {
-    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <max-tasks>` to pledge capacity to a project.');
+  // Warn if contributor has no active pledges of any kind — they'll never receive tasks
+  const [pledges, genericPledges] = await Promise.all([
+    client.getPledges(),
+    client.getGenericPledges(),
+  ]);
+  const activePledges = pledges.filter((p) => p.active);
+  const activeGenericPledges = genericPledges.filter((p) => p.active);
+  if (activePledges.length === 0 && activeGenericPledges.length === 0) {
+    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <max-tasks>` or `tah contributor pledge-any <max-tasks>` to pledge capacity.');
   }
 
   console.log('[worker] Started. Polling for tasks...');

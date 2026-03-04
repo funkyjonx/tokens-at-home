@@ -1,4 +1,4 @@
-import type { WorkerConfig, TaskAssignment, Pledge } from '@tah/shared';
+import type { WorkerConfig, TaskAssignment, Pledge, GenericPledge } from '@tah/shared';
 
 export class CoordinatorClient {
   constructor(private readonly config: WorkerConfig) {}
@@ -66,6 +66,12 @@ export class CoordinatorClient {
     const res = await fetch(this.url('/contributors/me/pledges'), { headers: this.headers });
     if (!res.ok) throw new Error(`Get pledges failed: ${res.status}`);
     return res.json() as Promise<Pledge[]>;
+  }
+
+  async getGenericPledges(): Promise<GenericPledge[]> {
+    const res = await fetch(this.url('/contributors/me/generic-pledges'), { headers: this.headers });
+    if (!res.ok) throw new Error(`Get generic pledges failed: ${res.status}`);
+    return res.json() as Promise<GenericPledge[]>;
   }
 
   async setAvailable(available: boolean): Promise<void> {
