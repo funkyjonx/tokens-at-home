@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   RegisterContributorSchema,
@@ -7,7 +7,7 @@ import {
   SetAvailableSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { contributors, pledges } from '../db/schema.js';
+import { contributors, pledges, projects } from '../db/schema.js';
 import {
   createAuthToken,
   getContributorFromToken,
@@ -92,6 +92,26 @@ export function contributorRoutes(db: Db) {
     const body = await c.req.json();
     const parsed = CreatePledgeSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    // Verify the project exists
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, parsed.data.projectId))
+      .get();
+    if (!project) return c.json({ error: 'Project not found' }, 404);
+
+    // Reject duplicate active pledge for same project
+    const existing = await db
+      .select({ id: pledges.id })
+      .from(pledges)
+      .where(and(
+        eq(pledges.contributorId, contributor.id),
+        eq(pledges.projectId, parsed.data.projectId),
+        eq(pledges.active, true),
+      ))
+      .get();
+    if (existing) return c.json({ error: 'Active pledge already exists for this project' }, 409);
 
     const id = randomBytes(8).toString('hex');
     await db.insert(pledges).values({

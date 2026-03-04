@@ -10,7 +10,8 @@ export type IssueStatus =
   | 'in_progress'
   | 'submitted'
   | 'merged'
-  | 'rejected';
+  | 'rejected'
+  | 'cancelled';
 
 export type TaskStatus =
   | 'dispatched'

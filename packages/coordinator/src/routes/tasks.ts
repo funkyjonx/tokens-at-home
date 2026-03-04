@@ -5,6 +5,7 @@ import {
   AssignTaskSchema,
   CompleteTaskSchema,
   FailTaskSchema,
+  UpdateTaskStatusSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
 import { contributors, issues, projects, tasks } from '../db/schema.js';
@@ -190,11 +191,14 @@ export function taskRoutes(db: Db) {
     if (!task) return c.json({ error: 'Not found' }, 404);
     if (task.contributorId !== contributor.id) return c.json({ error: 'Forbidden' }, 403);
 
-    const { status } = await c.req.json() as { status: string };
+    const body = await c.req.json();
+    const parsed = UpdateTaskStatusSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
     const now = new Date().toISOString();
     await db
       .update(tasks)
-      .set({ status, updatedAt: now })
+      .set({ status: parsed.data.status, updatedAt: now })
       .where(eq(tasks.id, task.id));
 
     return c.json({ ok: true });
