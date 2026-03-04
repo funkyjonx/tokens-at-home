@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { createInterface } from 'readline';
+import { stdin as input, stdout as output } from 'process';
 import { loadConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
 import { mapGitHubLabelsToComplexity } from '@tah/shared';
@@ -82,6 +84,30 @@ async function syncProjectIssues(api: TahApiClient, project: Project, dryRun: bo
   }
 }
 
+async function confirmProjectRegistration(owner: string, repo: string, languages: string[], skipConfirmation = false): Promise<boolean> {
+  console.log('Project to register:');
+  console.log(`  Owner:     ${owner}`);
+  console.log(`  Repo:      ${repo}`);
+  console.log(`  Languages: ${languages.join(', ')}`);
+
+  if (skipConfirmation) {
+    return true;
+  }
+
+  if (!input.isTTY || !output.isTTY) {
+    console.error('Interactive confirmation required. Re-run with --yes to register non-interactively.');
+    return false;
+  }
+
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await new Promise<string>((resolve) => rl.question('\nSubmit? [y/N] ', resolve));
+    return answer.trim().toLowerCase() === 'y';
+  } finally {
+    rl.close();
+  }
+}
+
 export function projectCommand(): Command {
   const cmd = new Command('project').description('Manage projects');
 
@@ -95,12 +121,14 @@ export function projectCommand(): Command {
     .option('--max-concurrent <n>', 'Max concurrent tasks', '3')
     .option('--trust-threshold <n>', 'Min contributor trust score (0–1) to receive tasks', '0')
     .option('--claude-md <file>', 'Path to a CLAUDE.md file to inject as project context for contributors')
+    .option('-y, --yes', 'Skip confirmation prompt')
     .action(async (owner: string, repo: string, opts: {
       languages: string;
       label: string;
       maxConcurrent: string;
       trustThreshold: string;
       claudeMd?: string;
+      yes?: boolean;
     }) => {
       const config = loadConfig();
       requireAuth(config);
@@ -139,6 +167,12 @@ export function projectCommand(): Command {
           console.error(`CLAUDE.md content exceeds 4000 character limit (${claudeMd.length} chars). Trim it before registering.`);
           process.exit(1);
         }
+      }
+
+      const confirmed = await confirmProjectRegistration(owner, repo, languages, opts.yes === true);
+      if (!confirmed) {
+        console.log('Canceled. Project was not submitted.');
+        return;
       }
 
       const project = await api.post<Project>('/projects', {
