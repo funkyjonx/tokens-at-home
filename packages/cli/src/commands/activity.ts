@@ -10,17 +10,15 @@ export function activityCommand(): Command {
     .action(async (opts: { limit: string }) => {
       const config = loadConfig();
       const api = new TahApiClient(config.coordinatorUrl);
-      const events = await api.get<ActivityEvent[]>('/events');
+      const limit = parseInt(opts.limit, 10);
+      const events = await api.get<ActivityEvent[]>(`/events?limit=${limit}`);
 
       if (events.length === 0) {
         console.log('No activity yet.');
         return;
       }
 
-      const limit = parseInt(opts.limit, 10);
-      const shown = events.slice(0, limit);
-
-      for (const e of shown) {
+      for (const e of events) {
         const date = e.ts.replace('T', ' ').slice(0, 16);
         switch (e.type) {
           case 'project_registered':
@@ -41,8 +39,8 @@ export function activityCommand(): Command {
         }
       }
 
-      if (events.length > limit) {
-        console.log(`\n(${events.length - limit} more — use --limit to see more)`);
+      if (events.length === limit) {
+        console.log(`\n(showing ${limit} events — use --limit to see more)`);
       }
     });
 }

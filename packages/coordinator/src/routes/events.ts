@@ -102,7 +102,9 @@ export function eventRoutes(db: Db) {
     // Sort descending by timestamp (most recent first)
     events.sort((a, b) => b.ts.localeCompare(a.ts));
 
-    return c.json(events);
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '200', 10) || 200, 1000);
+    const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0);
+    return c.json(events.slice(offset, offset + limit));
   });
 
   return app;

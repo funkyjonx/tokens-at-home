@@ -41,9 +41,11 @@ async function fetchGitHubIssueData(
 export function projectRoutes(db: Db) {
   const app = new Hono();
 
-  // List all projects
+  // List all projects (paginated)
   app.get('/', async (c) => {
-    const all = await db.select().from(projects).all();
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '100', 10) || 100, 500);
+    const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0);
+    const all = await db.select().from(projects).limit(limit).offset(offset).all();
     return c.json(all.map(deserializeProject));
   });
 
@@ -154,12 +156,21 @@ export function projectRoutes(db: Db) {
     return c.json(projectIssues);
   });
 
-  // Cancel an available issue (e.g. it was closed on GitHub)
+  // Cancel an available issue (e.g. it was closed on GitHub).
+  // Only the contributor who registered the project may cancel its issues.
   app.patch('/:id/issues/:issueId/cancel', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const project = await db
+      .select({ registeredBy: projects.registeredBy })
+      .from(projects)
+      .where(eq(projects.id, c.req.param('id')))
+      .get();
+    if (!project) return c.json({ error: 'Not found' }, 404);
+    if (project.registeredBy !== contributor.githubUsername) return c.json({ error: 'Forbidden' }, 403);
 
     const issue = await db
       .select()

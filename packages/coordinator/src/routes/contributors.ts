@@ -14,11 +14,47 @@ import {
   extractBearerToken,
 } from '../services/auth.js';
 
+// Simple in-memory rate limiter for contributor registration (unauthenticated endpoint).
+// Allows 5 registrations per IP per 15 minutes.
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const RATE_LIMIT_MAX = 5;
+const registrationRateLimit = new Map<string, { count: number; windowStart: number }>();
+
+function getClientIp(forwarded: string | undefined, realIp: string | undefined): string {
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return realIp ?? 'unknown';
+}
+
+function checkRateLimit(ip: string): boolean {
+  // 'unknown' means no proxy is forwarding the real IP (e.g. local dev or tests)
+  if (ip === 'unknown') return true;
+  const now = Date.now();
+  const entry = registrationRateLimit.get(ip);
+  if (entry && now - entry.windowStart < RATE_LIMIT_WINDOW_MS) {
+    if (entry.count >= RATE_LIMIT_MAX) return false;
+    entry.count++;
+  } else {
+    registrationRateLimit.set(ip, { count: 1, windowStart: now });
+  }
+  // Periodically prune stale entries (1% chance per call)
+  if (Math.random() < 0.01) {
+    for (const [k, v] of registrationRateLimit) {
+      if (now - v.windowStart > RATE_LIMIT_WINDOW_MS) registrationRateLimit.delete(k);
+    }
+  }
+  return true;
+}
+
 export function contributorRoutes(db: Db) {
   const app = new Hono();
 
   // Register a new contributor (no auth required)
   app.post('/', async (c) => {
+    const ip = getClientIp(c.req.header('X-Forwarded-For'), c.req.header('X-Real-IP'));
+    if (!checkRateLimit(ip)) {
+      return c.json({ error: 'Too many registration attempts — try again later' }, 429);
+    }
+
     const body = await c.req.json();
     const parsed = RegisterContributorSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
@@ -102,7 +138,7 @@ export function contributorRoutes(db: Db) {
     if (!project) return c.json({ error: 'Project not found' }, 404);
 
     // Reject duplicate active pledge for same project
-    const existing = await db
+    const existingPledge = await db
       .select({ id: pledges.id })
       .from(pledges)
       .where(and(
@@ -111,7 +147,7 @@ export function contributorRoutes(db: Db) {
         eq(pledges.active, true),
       ))
       .get();
-    if (existing) return c.json({ error: 'Active pledge already exists for this project' }, 409);
+    if (existingPledge) return c.json({ error: 'Active pledge already exists for this project' }, 409);
 
     const id = randomBytes(8).toString('hex');
     await db.insert(pledges).values({
@@ -142,17 +178,25 @@ export function contributorRoutes(db: Db) {
     return c.json(contributorPledges);
   });
 
-  // Deactivate a pledge (requires auth)
+  // Deactivate a pledge (requires auth, must own the pledge)
   app.delete('/me/pledges/:pledgeId', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
 
+    const pledge = await db
+      .select({ id: pledges.id, contributorId: pledges.contributorId })
+      .from(pledges)
+      .where(eq(pledges.id, c.req.param('pledgeId')))
+      .get();
+    if (!pledge) return c.json({ error: 'Not found' }, 404);
+    if (pledge.contributorId !== contributor.id) return c.json({ error: 'Forbidden' }, 403);
+
     await db
       .update(pledges)
       .set({ active: false })
-      .where(eq(pledges.id, c.req.param('pledgeId')));
+      .where(eq(pledges.id, pledge.id));
     return c.json({ ok: true });
   });
 

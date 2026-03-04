@@ -267,9 +267,16 @@ export function taskRoutes(db: Db) {
     return c.json({ ok: true });
   });
 
-  // Admin: list all tasks
+  // List all tasks (requires auth, paginated)
   app.get('/', async (c) => {
-    const all = await db.select().from(tasks).all();
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '100', 10) || 100, 500);
+    const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0);
+    const all = await db.select().from(tasks).limit(limit).offset(offset).all();
     return c.json(all);
   });
 
