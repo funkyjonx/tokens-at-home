@@ -37,6 +37,24 @@ async function syncProjectIssues(api: TahApiClient, project: Project, dryRun: bo
     labels: Array<{ name: string }>;
   }>;
 
+  const openNumbers = new Set(ghIssues.map((i) => i.number));
+
+  // Cancel coordinator issues that are no longer open on GitHub
+  const coordinatorIssues = await api.get<Issue[]>(`/projects/${project.id}/issues`);
+  const toCancel = coordinatorIssues.filter(
+    (i) => i.status === 'available' && !openNumbers.has(i.githubNumber),
+  );
+  for (const issue of toCancel) {
+    if (dryRun) {
+      console.log(`  [dry-run] would cancel #${issue.githubNumber}: ${issue.title} (closed on GitHub)`);
+      continue;
+    }
+    try {
+      await api.patch(`/projects/${project.id}/issues/${issue.id}/cancel`, {});
+      console.log(`  - #${issue.githubNumber}: ${issue.title} (cancelled — closed on GitHub)`);
+    } catch { /* ignore */ }
+  }
+
   if (ghIssues.length === 0) {
     console.log(`No open issues found with label "${project.issueLabel}".`);
     return;

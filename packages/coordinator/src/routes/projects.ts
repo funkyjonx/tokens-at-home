@@ -154,6 +154,25 @@ export function projectRoutes(db: Db) {
     return c.json(projectIssues);
   });
 
+  // Cancel an available issue (e.g. it was closed on GitHub)
+  app.patch('/:id/issues/:issueId/cancel', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const issue = await db
+      .select()
+      .from(issues)
+      .where(and(eq(issues.id, c.req.param('issueId')), eq(issues.projectId, c.req.param('id'))))
+      .get();
+    if (!issue) return c.json({ error: 'Not found' }, 404);
+    if (issue.status !== 'available') return c.json({ error: `Cannot cancel issue with status '${issue.status}'` }, 409);
+
+    await db.update(issues).set({ status: 'cancelled' }).where(eq(issues.id, issue.id));
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 

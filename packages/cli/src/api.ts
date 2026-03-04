@@ -80,6 +80,16 @@ export class TahApiClient {
     return res.json() as Promise<T>;
   }
 
+  async patch<T>(path: string, body: unknown): Promise<T> {
+    const res = await this.fetchWithTimeout(this.url(path), {
+      method: 'PATCH',
+      headers: this.headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return this.throwHttpError('PATCH', path, res);
+    return res.json() as Promise<T>;
+  }
+
   async delete<T>(path: string): Promise<T> {
     const res = await this.fetchWithTimeout(this.url(path), {
       method: 'DELETE',
