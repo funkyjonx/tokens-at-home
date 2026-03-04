@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
-import { contributors, issues, pledges, projects, tasks } from '../db/schema.js';
-import type { Issue, Project, Contributor, Pledge } from '@tah/shared';
+import { contributors, issues, pledges, projects, tasks, watchlist, genericPledges } from '../db/schema.js';
+import type { Issue, Project, Contributor, Pledge, GenericPledge } from '@tah/shared';
 
 const TERMINAL_STATUSES = ['completed', 'failed'];
 import { COMPLEXITY_ORDER } from '@tah/shared';
@@ -12,7 +12,7 @@ export function scoreMatch(
   contributor: Contributor,
   issue: Issue,
   project: Project,
-  pledge: Pledge,
+  pledge: Pick<Pledge, 'maxComplexity'>,
 ): number | null {
   // Trust check
   if (contributor.trustScore < project.trustThreshold) return null;
@@ -70,6 +70,16 @@ export async function findBestMatches(
     .where(eq(pledges.active, true))
     .all();
 
+  // Load all active generic pledges
+  const activeGenericPledges = await db
+    .select()
+    .from(genericPledges)
+    .where(eq(genericPledges.active, true))
+    .all();
+
+  // Load all watchlist entries
+  const allWatchlistEntries = await db.select().from(watchlist).all();
+
   // Load all projects
   const allProjects = await db.select().from(projects).all();
   const projectMap = new Map(allProjects.map((p) => [p.id, p]));
@@ -100,6 +110,16 @@ export async function findBestMatches(
     // Find pledges for this contributor
     const contributorPledges = activePledges.filter((p) => p.contributorId === contributor.id);
 
+    // Build typed contributor once (used in both loops below)
+    const { cycleResetDate: rawCycleReset, ...contributorRest } = contributor;
+    const contributorTyped: Contributor = {
+      ...contributorRest,
+      languages: JSON.parse(contributor.languages) as string[],
+      autonomy: contributor.autonomy as 'full' | 'review_before_pr',
+      available: Boolean(contributor.available),
+      ...(rawCycleReset != null ? { cycleResetDate: rawCycleReset } : {}),
+    };
+
     for (const pledge of contributorPledges) {
       // Skip exhausted pledges
       if ((taskCountByPledge.get(pledge.id) ?? 0) >= pledge.maxTasks) continue;
@@ -110,15 +130,6 @@ export async function findBestMatches(
       const projectIssues = availableIssues.filter((i) => i.projectId === project.id);
 
       for (const issue of projectIssues) {
-        // Map DB rows to shared types for scoring
-        const { cycleResetDate: rawCycleReset, ...contributorRest } = contributor;
-        const contributorTyped: Contributor = {
-          ...contributorRest,
-          languages: JSON.parse(contributor.languages) as string[],
-          autonomy: contributor.autonomy as 'full' | 'review_before_pr',
-          available: Boolean(contributor.available),
-          ...(rawCycleReset != null ? { cycleResetDate: rawCycleReset } : {}),
-        };
         const projectTyped = {
           ...project,
           languages: JSON.parse(project.languages) as string[],
@@ -133,6 +144,36 @@ export async function findBestMatches(
         const score = scoreMatch(contributorTyped, issueTyped, projectTyped, pledgeTyped);
         if (score !== null) {
           candidates.push({ contributorId: contributor.id, issueId: issue.id, pledgeId: pledge.id, score });
+        }
+      }
+    }
+
+    // Generic pledges: match against watchlist projects
+    const contributorGenericPledges = activeGenericPledges.filter((p) => p.contributorId === contributor.id);
+    const contributorWatchlist = allWatchlistEntries.filter((w) => w.contributorId === contributor.id);
+
+    for (const gPledge of contributorGenericPledges) {
+      if ((taskCountByPledge.get(gPledge.id) ?? 0) >= gPledge.maxTasks) continue;
+
+      // Shuffle watchlist for random project selection
+      const shuffled = [...contributorWatchlist].sort(() => Math.random() - 0.5);
+
+      for (const entry of shuffled) {
+        const project = projectMap.get(entry.projectId);
+        if (!project) continue;
+
+        const projectIssues = availableIssues.filter((i) => i.projectId === project.id);
+        const projectTyped = {
+          ...project,
+          languages: JSON.parse(project.languages) as string[],
+          taskTypes: JSON.parse(project.taskTypes) as string[],
+        } as unknown as Project;
+
+        for (const issue of projectIssues) {
+          const score = scoreMatch(contributorTyped, issue as unknown as Issue, projectTyped, gPledge);
+          if (score !== null) {
+            candidates.push({ contributorId: contributor.id, issueId: issue.id, pledgeId: gPledge.id, score });
+          }
         }
       }
     }
@@ -186,7 +227,15 @@ export async function findMatchForContributor(
     .from(pledges)
     .where(and(eq(pledges.contributorId, contributorId), eq(pledges.active, true)))
     .all();
-  if (contributorPledges.length === 0) return null;
+
+  // Load active generic pledges for this contributor
+  const contributorGenericPledges = await db
+    .select()
+    .from(genericPledges)
+    .where(and(eq(genericPledges.contributorId, contributorId), eq(genericPledges.active, true)))
+    .all();
+
+  if (contributorPledges.length === 0 && contributorGenericPledges.length === 0) return null;
 
   // Count tasks per pledge (active + completed) to check against maxTasks
   const pledgeTasks = await db
@@ -240,6 +289,49 @@ export async function findMatchForContributor(
       const score = scoreMatch(contributorTyped, issue as unknown as Issue, projectTyped, pledgeTyped);
       if (score !== null) {
         candidates.push({ issueId: issue.id, pledgeId: pledge.id, score });
+      }
+    }
+  }
+
+  // Generic pledges: match against watchlist projects
+  const contributorWatchlist = await db
+    .select()
+    .from(watchlist)
+    .where(eq(watchlist.contributorId, contributorId))
+    .all();
+
+  for (const gPledge of contributorGenericPledges) {
+    const tasksForPledge = taskCountByPledge.get(gPledge.id) ?? 0;
+    if (tasksForPledge >= gPledge.maxTasks) continue;
+
+    // Shuffle watchlist for random project selection
+    const shuffled = [...contributorWatchlist].sort(() => Math.random() - 0.5);
+
+    for (const entry of shuffled) {
+      const project = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, entry.projectId))
+        .get();
+      if (!project) continue;
+
+      const projectIssues = await db
+        .select()
+        .from(issues)
+        .where(and(eq(issues.projectId, project.id), eq(issues.status, 'available')))
+        .all();
+
+      const projectTyped = {
+        ...project,
+        languages: JSON.parse(project.languages) as string[],
+        taskTypes: JSON.parse(project.taskTypes) as string[],
+      } as unknown as Project;
+
+      for (const issue of projectIssues) {
+        const score = scoreMatch(contributorTyped, issue as unknown as Issue, projectTyped, gPledge);
+        if (score !== null) {
+          candidates.push({ issueId: issue.id, pledgeId: gPledge.id, score });
+        }
       }
     }
   }

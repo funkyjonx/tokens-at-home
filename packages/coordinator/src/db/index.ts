@@ -95,6 +95,23 @@ export function initSchema(_db: Db) {
       expires_at TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id TEXT PRIMARY KEY,
+      contributor_id TEXT NOT NULL REFERENCES contributors(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(contributor_id, project_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS generic_pledges (
+      id TEXT PRIMARY KEY,
+      contributor_id TEXT NOT NULL REFERENCES contributors(id),
+      max_tasks INTEGER NOT NULL,
+      max_complexity TEXT NOT NULL DEFAULT 'large',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Additive column migrations (safe to re-run; errors mean column already exists)

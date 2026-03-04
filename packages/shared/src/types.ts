@@ -99,6 +99,24 @@ export interface Pledge {
   maxComplexity: IssueComplexity;
   active: boolean;
   createdAt: string;
+  completedTasks?: number;
+}
+
+export interface WatchlistEntry {
+  id: string;
+  contributorId: string;
+  projectId: string;
+  createdAt: string;
+}
+
+export interface GenericPledge {
+  id: string;
+  contributorId: string;
+  maxTasks: number;
+  maxComplexity: IssueComplexity;
+  active: boolean;
+  createdAt: string;
+  completedTasks?: number;
 }
 
 export interface Issue {

@@ -53,6 +53,17 @@ export const CreatePledgeSchema = z.object({
 });
 export type CreatePledgeInput = z.infer<typeof CreatePledgeSchema>;
 
+export const AddToWatchlistSchema = z.object({
+  projectId: z.string().min(1).max(32),
+});
+export type AddToWatchlistInput = z.infer<typeof AddToWatchlistSchema>;
+
+export const CreateGenericPledgeSchema = z.object({
+  maxTasks: z.number().int().min(1).max(1000),
+  maxComplexity: IssueComplexitySchema.default('large'),
+});
+export type CreateGenericPledgeInput = z.infer<typeof CreateGenericPledgeSchema>;
+
 export const SetAvailableSchema = z.object({
   available: z.boolean(),
 });

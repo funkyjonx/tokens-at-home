@@ -1,8 +1,17 @@
 import { Command } from 'commander';
 import { loadConfig, saveConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
-import type { Contributor, Pledge, Project, Task } from '@tah/shared';
+import type { Contributor, GenericPledge, Pledge, Project, Task, WatchlistEntry } from '@tah/shared';
 import { createInterface } from 'readline';
+import { execSync } from 'child_process';
+
+function getGithubUsername(): string | null {
+  try {
+    return execSync('gh api user --jq .login', { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -30,7 +39,21 @@ export function contributorCommand(): Command {
       languages: string;
       autonomy: string;
     }) => {
-      const username = opts.username ?? await prompt('GitHub username: ');
+      let username = opts.username;
+      if (!username) {
+        const detected = getGithubUsername();
+        if (detected) {
+          const confirm = await prompt(`Register as ${detected}? [Y/n]: `);
+          if (confirm.toLowerCase() === 'n') {
+            username = await prompt('GitHub username: ');
+          } else {
+            username = detected;
+          }
+        } else {
+          username = await prompt('GitHub username: ');
+        }
+      }
+
       if (!username) {
         console.error('Username required');
         process.exit(1);
@@ -70,11 +93,17 @@ export function contributorCommand(): Command {
   cmd
     .command('profile')
     .description('Show your contributor profile')
-    .action(async () => {
+    .option('--json', 'Output as JSON')
+    .action(async (opts: { json?: boolean }) => {
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
       const contributor = await api.get<Contributor>('/contributors/me');
+
+      if (opts.json) {
+        console.log(JSON.stringify(contributor, null, 2));
+        return;
+      }
 
       console.log(`GitHub: ${contributor.githubUsername}`);
       console.log(`ID: ${contributor.id}`);
@@ -136,11 +165,17 @@ export function contributorCommand(): Command {
   cmd
     .command('pledges')
     .description('List your active pledges')
-    .action(async () => {
+    .option('--json', 'Output as JSON')
+    .action(async (opts: { json?: boolean }) => {
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
       const pledges = await api.get<Pledge[]>('/contributors/me/pledges');
+
+      if (opts.json) {
+        console.log(JSON.stringify(pledges, null, 2));
+        return;
+      }
 
       if (pledges.length === 0) {
         console.log('No active pledges.');
@@ -159,16 +194,98 @@ export function contributorCommand(): Command {
         }),
       );
 
+      console.log('Project'.padEnd(30), 'Tasks'.padEnd(10), 'Complexity'.padEnd(15), 'Status');
+      console.log('-'.repeat(65));
+
       for (let i = 0; i < pledges.length; i++) {
-        const p = pledges[i];
-        const name = projectNames[i];
+        const p = pledges[i]!;
+        const name = projectNames[i]!;
+        const tasks = `${p.completedTasks ?? 0}/${p.maxTasks}`;
         const status = p.active ? 'active' : 'inactive';
-        console.log(`${name}  [${p.id}]`);
-        console.log(`  Max tasks:      ${p.maxTasks}`);
-        console.log(`  Max complexity: ${p.maxComplexity}`);
-        console.log(`  Status:         ${status}`);
-        console.log();
+        console.log(
+          name.padEnd(30),
+          tasks.padEnd(10),
+          p.maxComplexity.padEnd(15),
+          status,
+        );
       }
+    });
+
+  cmd
+    .command('watch')
+    .description('Add a project to your watchlist')
+    .argument('<project-id>', 'Project ID to watch')
+    .action(async (projectId: string) => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      await api.post('/contributors/me/watchlist', { projectId });
+      console.log(`Project ${projectId} added to watchlist.`);
+    });
+
+  cmd
+    .command('unwatch')
+    .description('Remove a project from your watchlist')
+    .argument('<project-id>', 'Project ID to remove')
+    .action(async (projectId: string) => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      await api.delete(`/contributors/me/watchlist/${projectId}`);
+      console.log(`Project ${projectId} removed from watchlist.`);
+    });
+
+  cmd
+    .command('watchlist')
+    .description('List your watched projects')
+    .option('--json', 'Output as JSON')
+    .action(async (opts: { json?: boolean }) => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      const entries = await api.get<(WatchlistEntry & { githubOwner: string; githubRepo: string })[]>(
+        '/contributors/me/watchlist',
+      );
+
+      if (opts.json) {
+        console.log(JSON.stringify(entries, null, 2));
+        return;
+      }
+
+      if (entries.length === 0) {
+        console.log('No projects on watchlist.');
+        return;
+      }
+
+      console.log('Project'.padEnd(40), 'ID');
+      console.log('-'.repeat(60));
+      for (const e of entries) {
+        console.log(`${e.githubOwner}/${e.githubRepo}`.padEnd(40), e.projectId);
+      }
+    });
+
+  cmd
+    .command('pledge-any')
+    .description('Pledge capacity to any project on your watchlist')
+    .argument('<max-tasks>', 'Number of tasks to complete')
+    .option('--max-complexity <c>', 'Max issue complexity: trivial | small | medium | large', 'large')
+    .action(async (maxTasksStr: string, opts: { maxComplexity: string }) => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+
+      const maxTasks = parseInt(maxTasksStr, 10);
+      if (isNaN(maxTasks) || maxTasks < 1) {
+        console.error('max-tasks must be a positive integer');
+        process.exit(1);
+      }
+
+      const pledge = await api.post<GenericPledge>('/contributors/me/generic-pledges', {
+        maxTasks,
+        maxComplexity: opts.maxComplexity,
+      });
+
+      console.log(`Generic pledge created: ${pledge.maxTasks} task(s) (up to ${pledge.maxComplexity}) from any watched project.`);
     });
 
   return cmd;

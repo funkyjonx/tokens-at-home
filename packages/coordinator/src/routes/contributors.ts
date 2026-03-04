@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   RegisterContributorSchema,
   CreatePledgeSchema,
   SetAvailableSchema,
+  AddToWatchlistSchema,
+  CreateGenericPledgeSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { contributors, pledges, projects } from '../db/schema.js';
+import { contributors, pledges, projects, tasks, authTokens, watchlist, genericPledges } from '../db/schema.js';
 import {
   createAuthToken,
   getContributorFromToken,
@@ -175,7 +177,29 @@ export function contributorRoutes(db: Db) {
       .from(pledges)
       .where(eq(pledges.contributorId, contributor.id))
       .all();
-    return c.json(contributorPledges);
+
+    // Fetch task counts for each pledge
+    const pledgeIds = contributorPledges.map((p) => p.id);
+    const taskCounts = await db
+      .select({ pledgeId: tasks.pledgeId, count: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(
+        eq(tasks.contributorId, contributor.id),
+        sql`${tasks.pledgeId} IN ${pledgeIds.length > 0 ? pledgeIds : ['none']}`,
+        eq(tasks.status, 'completed'),
+      ))
+      .groupBy(tasks.pledgeId)
+      .all();
+
+    const countMap = new Map(taskCounts.map((tc) => [tc.pledgeId, tc.count]));
+
+    const results = contributorPledges.map((p) => ({
+      ...p,
+      active: Boolean(p.active),
+      completedTasks: countMap.get(p.id) ?? 0,
+    }));
+
+    return c.json(results);
   });
 
   // Deactivate a pledge (requires auth, must own the pledge)
@@ -198,6 +222,192 @@ export function contributorRoutes(db: Db) {
       .set({ active: false })
       .where(eq(pledges.id, pledge.id));
     return c.json({ ok: true });
+  });
+
+  // --- Watchlist endpoints ---
+
+  // Add a project to watchlist
+  app.post('/me/watchlist', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const body = await c.req.json();
+    const parsed = AddToWatchlistSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, parsed.data.projectId))
+      .get();
+    if (!project) return c.json({ error: 'Project not found' }, 404);
+
+    const existing = await db
+      .select({ id: watchlist.id })
+      .from(watchlist)
+      .where(and(
+        eq(watchlist.contributorId, contributor.id),
+        eq(watchlist.projectId, parsed.data.projectId),
+      ))
+      .get();
+    if (existing) return c.json({ error: 'Project already on watchlist' }, 409);
+
+    const id = randomBytes(8).toString('hex');
+    await db.insert(watchlist).values({
+      id,
+      contributorId: contributor.id,
+      projectId: parsed.data.projectId,
+    });
+
+    const entry = await db.select().from(watchlist).where(eq(watchlist.id, id)).get();
+    return c.json(entry, 201);
+  });
+
+  // Remove a project from watchlist
+  app.delete('/me/watchlist/:projectId', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const entry = await db
+      .select({ id: watchlist.id })
+      .from(watchlist)
+      .where(and(
+        eq(watchlist.contributorId, contributor.id),
+        eq(watchlist.projectId, c.req.param('projectId')),
+      ))
+      .get();
+    if (!entry) return c.json({ error: 'Not found' }, 404);
+
+    await db.delete(watchlist).where(eq(watchlist.id, entry.id));
+    return c.json({ ok: true });
+  });
+
+  // List watchlist (with project names)
+  app.get('/me/watchlist', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const entries = await db
+      .select({
+        id: watchlist.id,
+        contributorId: watchlist.contributorId,
+        projectId: watchlist.projectId,
+        createdAt: watchlist.createdAt,
+        githubOwner: projects.githubOwner,
+        githubRepo: projects.githubRepo,
+      })
+      .from(watchlist)
+      .innerJoin(projects, eq(watchlist.projectId, projects.id))
+      .where(eq(watchlist.contributorId, contributor.id))
+      .all();
+
+    return c.json(entries);
+  });
+
+  // --- Generic pledge endpoints ---
+
+  // Create a generic pledge
+  app.post('/me/generic-pledges', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const body = await c.req.json();
+    const parsed = CreateGenericPledgeSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    const id = randomBytes(8).toString('hex');
+    await db.insert(genericPledges).values({
+      id,
+      contributorId: contributor.id,
+      maxTasks: parsed.data.maxTasks,
+      maxComplexity: parsed.data.maxComplexity,
+      active: true,
+    });
+
+    const pledge = await db.select().from(genericPledges).where(eq(genericPledges.id, id)).get();
+    return c.json({ ...pledge, active: Boolean(pledge!.active) }, 201);
+  });
+
+  // List generic pledges (with completed task counts)
+  app.get('/me/generic-pledges', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const allPledges = await db
+      .select()
+      .from(genericPledges)
+      .where(eq(genericPledges.contributorId, contributor.id))
+      .all();
+
+    const pledgeIds = allPledges.map((p) => p.id);
+    const taskCounts = await db
+      .select({ pledgeId: tasks.pledgeId, count: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(
+        eq(tasks.contributorId, contributor.id),
+        sql`${tasks.pledgeId} IN ${pledgeIds.length > 0 ? pledgeIds : ['none']}`,
+        eq(tasks.status, 'completed'),
+      ))
+      .groupBy(tasks.pledgeId)
+      .all();
+
+    const countMap = new Map(taskCounts.map((tc) => [tc.pledgeId, tc.count]));
+
+    return c.json(allPledges.map((p) => ({
+      ...p,
+      active: Boolean(p.active),
+      completedTasks: countMap.get(p.id) ?? 0,
+    })));
+  });
+
+  // Deactivate a generic pledge
+  app.delete('/me/generic-pledges/:pledgeId', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const pledge = await db
+      .select({ id: genericPledges.id, contributorId: genericPledges.contributorId })
+      .from(genericPledges)
+      .where(eq(genericPledges.id, c.req.param('pledgeId')))
+      .get();
+    if (!pledge) return c.json({ error: 'Not found' }, 404);
+    if (pledge.contributorId !== contributor.id) return c.json({ error: 'Forbidden' }, 403);
+
+    await db
+      .update(genericPledges)
+      .set({ active: false })
+      .where(eq(genericPledges.id, pledge.id));
+    return c.json({ ok: true });
+  });
+
+  app.delete('/me', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    // For safety, we just mark as unavailable and remove auth tokens.
+    // We don't delete the contributor record to preserve task history.
+    await db
+      .update(contributors)
+      .set({ available: false })
+      .where(eq(contributors.id, contributor.id));
+
+    await db.delete(authTokens).where(eq(authTokens.contributorId, contributor.id));
+
+    return c.json({ ok: true, message: 'Contributor deregistered and tokens revoked.' });
   });
 
   return app;

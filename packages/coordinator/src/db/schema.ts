@@ -82,6 +82,28 @@ export const tasks = sqliteTable('tasks', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 });
 
+export const watchlist = sqliteTable('watchlist', {
+  id: text('id').primaryKey(),
+  contributorId: text('contributor_id')
+    .notNull()
+    .references(() => contributors.id),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
+export const genericPledges = sqliteTable('generic_pledges', {
+  id: text('id').primaryKey(),
+  contributorId: text('contributor_id')
+    .notNull()
+    .references(() => contributors.id),
+  maxTasks: integer('max_tasks').notNull(),
+  maxComplexity: text('max_complexity').notNull().default('large'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
 // Auth tokens for daemon/CLI access
 export const authTokens = sqliteTable('auth_tokens', {
   id: text('id').primaryKey(),
