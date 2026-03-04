@@ -54,6 +54,7 @@ export function initSchema(_db: Db) {
       project_id TEXT NOT NULL REFERENCES projects(id),
       max_tasks INTEGER NOT NULL,
       max_complexity TEXT NOT NULL DEFAULT 'large',
+      budget_percent INTEGER NOT NULL DEFAULT 100,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -100,6 +101,7 @@ export function initSchema(_db: Db) {
   const addColumns = [
     "ALTER TABLE pledges ADD COLUMN max_tasks INTEGER NOT NULL DEFAULT 10",
     "ALTER TABLE pledges ADD COLUMN max_complexity TEXT NOT NULL DEFAULT 'large'",
+    "ALTER TABLE pledges ADD COLUMN budget_percent INTEGER NOT NULL DEFAULT 100",
     "ALTER TABLE pledges ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE projects ADD COLUMN task_types TEXT NOT NULL DEFAULT '[\"code\"]'",
     "ALTER TABLE projects ADD COLUMN trust_threshold REAL NOT NULL DEFAULT 0",
