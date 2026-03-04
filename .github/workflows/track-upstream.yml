@@ -22,6 +22,20 @@ jobs:
         if: steps.check.outputs.state == 'closed'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: |
+            The upstream feature request for programmatic access to Claude Pro/Max usage data has been closed:
+            https://github.com/anthropics/claude-code/issues/21943
+
+            ## What to do
+
+            1. Check how the usage data is now exposed (local file, `/usage --json`, or API endpoint)
+            2. In `packages/worker/src/index.ts`, read remaining quota before accepting a task
+            3. Skip tasks whose `issue.estimatedTokens` would exceed the remaining quota
+            4. Surface quota info in `tah contributor pledges` output
+
+            See the roadmap note in README.md for context.
+
+            _Opened automatically by the track-upstream workflow._
         run: |
           # Don't open a duplicate if one is already open
           EXISTING=$(gh issue list \
@@ -40,19 +54,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "anthropics/claude-code#21943 closed — implement token-budget awareness" \
             --label upstream-resolved \
-            --body "$(cat <<'EOF'
-The upstream feature request for programmatic access to Claude Pro/Max usage data has been closed:
-https://github.com/anthropics/claude-code/issues/21943
-
-## What to do
-
-1. Check how the usage data is now exposed (local file, `/usage --json`, or API endpoint)
-2. In \`packages/worker/src/index.ts\`, read remaining quota before accepting a task
-3. Skip tasks whose \`issue.estimatedTokens\` would exceed the remaining quota
-4. Surface quota info in \`tah contributor pledges\` output
-
-See the roadmap note in README.md for context.
-
-_Opened automatically by the track-upstream workflow._
-EOF
-)"
+            --body "$ISSUE_BODY"
