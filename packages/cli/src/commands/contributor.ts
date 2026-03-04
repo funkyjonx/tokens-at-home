@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig, saveConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
-import type { Contributor, Pledge, Task } from '@tah/shared';
+import type { Contributor, Pledge, Project, Task } from '@tah/shared';
 import { createInterface } from 'readline';
 
 function prompt(question: string): Promise<string> {
@@ -147,9 +147,27 @@ export function contributorCommand(): Command {
         return;
       }
 
-      for (const p of pledges) {
+      // Fetch project names in parallel, falling back to raw ID on failure
+      const projectNames = await Promise.all(
+        pledges.map(async (p) => {
+          try {
+            const proj = await api.get<Project>(`/projects/${p.projectId}`);
+            return `${proj.githubOwner}/${proj.githubRepo}`;
+          } catch {
+            return p.projectId;
+          }
+        }),
+      );
+
+      for (let i = 0; i < pledges.length; i++) {
+        const p = pledges[i];
+        const name = projectNames[i];
         const status = p.active ? 'active' : 'inactive';
-        console.log(`[${p.id}] Project: ${p.projectId} — ${p.maxTasks} task(s), up to ${p.maxComplexity} (${status})`);
+        console.log(`${name}  [${p.id}]`);
+        console.log(`  Max tasks:      ${p.maxTasks}`);
+        console.log(`  Max complexity: ${p.maxComplexity}`);
+        console.log(`  Status:         ${status}`);
+        console.log();
       }
     });
 
