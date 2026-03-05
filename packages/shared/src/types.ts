@@ -176,3 +176,33 @@ export type ActivityEvent =
   | { type: 'pledge_created'; ts: string; actor: string; project: string; maxTasks: number; maxComplexity: string }
   | { type: 'task_completed'; ts: string; actor: string; project: string; issueNumber: number; tokensUsed: number; prUrl: string }
   | { type: 'task_failed'; ts: string; actor: string; project: string; issueNumber: number; errorDetails?: string };
+
+export interface LeaderboardEntry {
+  rank: number;
+  githubUsername: string;
+  totalTokensDonated: number;
+  tasksCompleted: number;
+  successRate: number;
+  currentStreak: number;
+}
+
+export type LeaderboardPeriod = 'all' | 'month' | 'week';
+export type LeaderboardSort = 'tokens' | 'tasks' | 'streak';
+
+export interface ProjectStats {
+  totalTasksCompleted: number;
+  totalTokensConsumed: number;
+  availableIssues: number;
+  activeContributors: number;
+  topContributors: Array<{ githubUsername: string; tasksCompleted: number }>;
+}
+
+export interface PublicContributor {
+  id: string;
+  githubUsername: string;
+  languages: string[];
+  trustScore: number;
+  tasksCompleted: number;
+  totalTokensDonated: number;
+  memberSince: string;
+}

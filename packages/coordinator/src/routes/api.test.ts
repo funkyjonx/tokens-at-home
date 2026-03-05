@@ -7,7 +7,8 @@ import { initSchema } from '../db/index.js';
 import { projectRoutes } from './projects.js';
 import { contributorRoutes } from './contributors.js';
 import { taskRoutes } from './tasks.js';
-import type { Project, Contributor, Task, Issue, WatchlistEntry, GenericPledge } from '@tah/shared';
+import { leaderboardRoutes } from './leaderboard.js';
+import type { Project, Contributor, Task, Issue, WatchlistEntry, GenericPledge, LeaderboardEntry, PublicContributor, ProjectStats } from '@tah/shared';
 
 // Create an in-memory database for tests
 function createTestDb() {
@@ -128,6 +129,7 @@ describe('Coordinator API', () => {
     app.route('/contributors', contributorRoutes(db));
     app.route('/projects', projectRoutes(db));
     app.route('/tasks', taskRoutes(db));
+    app.route('/leaderboard', leaderboardRoutes(db));
 
     // Register a contributor
     const res = await registerContributor(app);
@@ -624,6 +626,233 @@ describe('Coordinator API', () => {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(res.status).toBe(204);
+    });
+  });
+
+  describe('GET /leaderboard', () => {
+    let projectId: string;
+
+    beforeEach(async () => {
+      // Create a project and issue, then complete a task
+      const pRes = await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'lb', githubRepo: 'test', languages: ['typescript'] }),
+      });
+      const project = await pRes.json() as Project;
+      projectId = project.id;
+
+      const iRes = await app.request(`/projects/${projectId}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubNumber: 1, title: 'LB issue', body: '', taskType: 'code' }),
+      });
+      const issue = await iRes.json() as Issue;
+
+      const assignRes = await app.request('/tasks/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ issueId: issue.id, contributorId }),
+      });
+      const task = await assignRes.json() as Task;
+
+      await app.request(`/tasks/${task.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ prUrl: 'https://github.com/lb/test/pull/1', tokensUsed: 3000, summary: 'done' }),
+      });
+    });
+
+    it('returns leaderboard entries after a completed task', async () => {
+      const res = await app.request('/leaderboard');
+      expect(res.status).toBe(200);
+      const entries = await res.json() as LeaderboardEntry[];
+      expect(entries.length).toBeGreaterThan(0);
+      expect(entries[0]?.rank).toBe(1);
+      expect(entries[0]?.githubUsername).toBe('testuser');
+      expect(entries[0]?.tasksCompleted).toBe(1);
+      expect(entries[0]?.totalTokensDonated).toBe(3000);
+    });
+
+    it('returns empty array when no completed tasks', async () => {
+      // Fresh db
+      const freshDb = createTestDb();
+      const freshApp = new Hono();
+      freshApp.route('/leaderboard', leaderboardRoutes(freshDb));
+      const res = await freshApp.request('/leaderboard');
+      expect(res.status).toBe(200);
+      const entries = await res.json() as LeaderboardEntry[];
+      expect(entries).toEqual([]);
+    });
+
+    it('supports period filter', async () => {
+      const res = await app.request('/leaderboard?period=week');
+      expect(res.status).toBe(200);
+      const entries = await res.json() as LeaderboardEntry[];
+      // Task was just created so should appear in week
+      expect(entries.length).toBeGreaterThan(0);
+    });
+
+    it('respects limit param', async () => {
+      const res = await app.request('/leaderboard?limit=1');
+      expect(res.status).toBe(200);
+      const entries = await res.json() as LeaderboardEntry[];
+      expect(entries.length).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('GET /projects (search)', () => {
+    beforeEach(async () => {
+      await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'searchorg', githubRepo: 'myreact', languages: ['typescript'] }),
+      });
+      await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'other', githubRepo: 'vue', languages: ['javascript'] }),
+      });
+    });
+
+    it('filters projects by query', async () => {
+      const res = await app.request('/projects?q=react');
+      expect(res.status).toBe(200);
+      const projects = await res.json() as Project[];
+      expect(projects.every((p) => p.githubOwner.includes('react') || p.githubRepo.includes('react'))).toBe(true);
+      expect(projects.find((p) => p.githubRepo === 'myreact')).toBeTruthy();
+      expect(projects.find((p) => p.githubRepo === 'vue')).toBeFalsy();
+    });
+
+    it('filters projects by language', async () => {
+      const res = await app.request('/projects?language=javascript');
+      expect(res.status).toBe(200);
+      const projects = await res.json() as Project[];
+      expect(projects.every((p) => p.languages.includes('javascript'))).toBe(true);
+    });
+  });
+
+  describe('GET /projects/:id/stats', () => {
+    let projectId: string;
+
+    beforeEach(async () => {
+      const pRes = await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'stats', githubRepo: 'repo', languages: ['rust'] }),
+      });
+      const project = await pRes.json() as Project;
+      projectId = project.id;
+
+      // Register 2 issues
+      for (const n of [10, 11]) {
+        await app.request(`/projects/${projectId}/issues`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ githubNumber: n, title: `Issue ${n}`, body: '', taskType: 'code' }),
+        });
+      }
+
+      // Complete a task for issue 10
+      const issuesRes = await app.request(`/projects/${projectId}/issues`);
+      const issues = await issuesRes.json() as Issue[];
+      const issue10 = issues.find((i) => i.githubNumber === 10)!;
+
+      const assignRes = await app.request('/tasks/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ issueId: issue10.id, contributorId }),
+      });
+      const task = await assignRes.json() as Task;
+      await app.request(`/tasks/${task.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ prUrl: 'https://github.com/stats/repo/pull/1', tokensUsed: 7500, summary: 'done' }),
+      });
+    });
+
+    it('returns project stats', async () => {
+      const res = await app.request(`/projects/${projectId}/stats`);
+      expect(res.status).toBe(200);
+      const stats = await res.json() as ProjectStats;
+      expect(stats.totalTasksCompleted).toBe(1);
+      expect(stats.totalTokensConsumed).toBe(7500);
+      expect(stats.availableIssues).toBe(1); // issue 11 still available
+      expect(stats.activeContributors).toBe(1);
+      expect(stats.topContributors.length).toBe(1);
+      expect(stats.topContributors[0]?.githubUsername).toBe('testuser');
+    });
+
+    it('returns 404 for unknown project', async () => {
+      const res = await app.request('/projects/doesnotexist/stats');
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET /contributors (public directory)', () => {
+    beforeEach(async () => {
+      // Register second contributor
+      await app.request('/contributors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUsername: 'alice', languages: ['rust'] }),
+      });
+
+      // Complete a task for testuser
+      const pRes = await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'cd', githubRepo: 'repo', languages: ['typescript'] }),
+      });
+      const project = await pRes.json() as Project;
+
+      const iRes = await app.request(`/projects/${project.id}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubNumber: 5, title: 'CD issue', body: '', taskType: 'code' }),
+      });
+      const issue = await iRes.json() as Issue;
+
+      const assignRes = await app.request('/tasks/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ issueId: issue.id, contributorId }),
+      });
+      const task = await assignRes.json() as Task;
+      await app.request(`/tasks/${task.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ prUrl: 'https://github.com/cd/repo/pull/1', tokensUsed: 2000, summary: 'done' }),
+      });
+    });
+
+    it('returns contributors with completed tasks', async () => {
+      const res = await app.request('/contributors');
+      expect(res.status).toBe(200);
+      const results = await res.json() as PublicContributor[];
+      // Only testuser has completed a task, not alice
+      expect(results.some((r) => r.githubUsername === 'testuser')).toBe(true);
+      expect(results.some((r) => r.githubUsername === 'alice')).toBe(false);
+    });
+
+    it('filters by query', async () => {
+      const res = await app.request('/contributors?q=test');
+      expect(res.status).toBe(200);
+      const results = await res.json() as PublicContributor[];
+      expect(results.every((r) => r.githubUsername.includes('test'))).toBe(true);
+    });
+
+    it('returns public fields only (no auth token)', async () => {
+      const res = await app.request('/contributors');
+      expect(res.status).toBe(200);
+      const results = await res.json() as PublicContributor[];
+      if (results.length > 0) {
+        expect(results[0]).toHaveProperty('githubUsername');
+        expect(results[0]).toHaveProperty('tasksCompleted');
+        expect(results[0]).toHaveProperty('totalTokensDonated');
+        expect(results[0]).not.toHaveProperty('autonomy');
+        expect(results[0]).not.toHaveProperty('available');
+      }
     });
   });
 });

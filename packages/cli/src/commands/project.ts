@@ -331,6 +331,31 @@ export function projectCommand(): Command {
 
   cmd.addCommand(issueCmd);
 
+  cmd
+    .command('search')
+    .description('Search for projects by name')
+    .argument('<query>', 'Search term (matches owner or repo name)')
+    .option('--language <lang>', 'Filter by language')
+    .action(async (query: string, opts: { language?: string }) => {
+      const config = loadConfig();
+      const api = new TahApiClient(config.coordinatorUrl);
+
+      const params = new URLSearchParams({ q: query });
+      if (opts.language) params.set('language', opts.language);
+      const projects = await api.get<Project[]>(`/projects?${params}`);
+
+      if (projects.length === 0) {
+        console.log('No projects found.');
+        return;
+      }
+
+      for (const p of projects) {
+        const name = `${p.githubOwner}/${p.githubRepo}`;
+        console.log(`${name.padEnd(48)} [${p.id}]`);
+        console.log(`  Languages: ${p.languages.join(', ')}`);
+      }
+    });
+
   // Shorthand alias
   cmd
     .command('issues')

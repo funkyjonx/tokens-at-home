@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadConfig, saveConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
-import type { Contributor, GenericPledge, Pledge, Project, Task, WatchlistEntry } from '@tah/shared';
+import type { Contributor, GenericPledge, Pledge, Project, PublicContributor, Task, WatchlistEntry } from '@tah/shared';
 import { createInterface } from 'readline';
 import { execSync } from 'child_process';
 
@@ -261,6 +261,35 @@ export function contributorCommand(): Command {
       console.log('-'.repeat(60));
       for (const e of entries) {
         console.log(`${e.githubOwner}/${e.githubRepo}`.padEnd(40), e.projectId);
+      }
+    });
+
+  cmd
+    .command('search')
+    .description('Search for contributors by username')
+    .argument('<query>', 'Search term (matches GitHub username)')
+    .option('--language <lang>', 'Filter by language')
+    .option('--sort <s>', 'Sort by: tasks | tokens', 'tasks')
+    .action(async (query: string, opts: { language?: string; sort: string }) => {
+      const config = loadConfig();
+      const api = new TahApiClient(config.coordinatorUrl);
+
+      const params = new URLSearchParams({ q: query, sort: opts.sort });
+      if (opts.language) params.set('language', opts.language);
+      const results = await api.get<PublicContributor[]>(`/contributors?${params}`);
+
+      if (results.length === 0) {
+        console.log('No contributors found.');
+        return;
+      }
+
+      console.log(`${'Username'.padEnd(24)}${'Languages'.padEnd(28)}${'Tasks'.padEnd(8)}Tokens Donated`);
+      console.log('-'.repeat(72));
+      for (const c of results) {
+        const username = c.githubUsername.padEnd(24);
+        const langs = c.languages.join(', ').substring(0, 26).padEnd(28);
+        const tasks = String(c.tasksCompleted).padEnd(8);
+        console.log(`${username}${langs}${tasks}${c.totalTokensDonated.toLocaleString('en-US')}`);
       }
     });
 

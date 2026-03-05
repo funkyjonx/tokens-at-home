@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   RegisterContributorSchema,
@@ -49,6 +49,80 @@ function checkRateLimit(ip: string): boolean {
 
 export function contributorRoutes(db: Db) {
   const app = new Hono();
+
+  // Public contributor directory (no auth required)
+  app.get('/', async (c) => {
+    const q = c.req.query('q');
+    const language = c.req.query('language');
+    const sort = c.req.query('sort') ?? 'tasks';
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10) || 50, 200);
+    const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0);
+
+    // Get all completed tasks grouped by contributor for stats
+    const taskStats = await db
+      .select({
+        contributorId: tasks.contributorId,
+        count: sql<number>`count(*)`,
+        tokens: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
+      })
+      .from(tasks)
+      .where(eq(tasks.status, 'completed'))
+      .groupBy(tasks.contributorId)
+      .all();
+
+    const statsMap = new Map(taskStats.map((r) => [r.contributorId, { count: r.count, tokens: r.tokens }]));
+
+    // Fetch contributors — only those with ≥1 completed task
+    const eligibleIds = [...statsMap.keys()];
+    if (eligibleIds.length === 0) return c.json([]);
+
+    let allContributors = await db
+      .select({
+        id: contributors.id,
+        githubUsername: contributors.githubUsername,
+        languages: contributors.languages,
+        trustScore: contributors.trustScore,
+        createdAt: contributors.createdAt,
+      })
+      .from(contributors)
+      .all();
+
+    // Filter to only eligible contributors
+    allContributors = allContributors.filter((c) => statsMap.has(c.id));
+
+    // Apply search filter
+    if (q) {
+      const lower = q.toLowerCase();
+      allContributors = allContributors.filter((c) =>
+        c.githubUsername.toLowerCase().includes(lower),
+      );
+    }
+    if (language) {
+      allContributors = allContributors.filter((c) => {
+        const langs = JSON.parse(c.languages) as string[];
+        return langs.includes(language);
+      });
+    }
+
+    // Sort
+    if (sort === 'tokens') {
+      allContributors.sort((a, b) => (statsMap.get(b.id)?.tokens ?? 0) - (statsMap.get(a.id)?.tokens ?? 0));
+    } else {
+      allContributors.sort((a, b) => (statsMap.get(b.id)?.count ?? 0) - (statsMap.get(a.id)?.count ?? 0));
+    }
+
+    const results = allContributors.slice(offset, offset + limit).map((c) => ({
+      id: c.id,
+      githubUsername: c.githubUsername,
+      languages: JSON.parse(c.languages) as string[],
+      trustScore: c.trustScore,
+      tasksCompleted: statsMap.get(c.id)?.count ?? 0,
+      totalTokensDonated: statsMap.get(c.id)?.tokens ?? 0,
+      memberSince: c.createdAt,
+    }));
+
+    return c.json(results);
+  });
 
   // Register a new contributor (no auth required)
   app.post('/', async (c) => {
