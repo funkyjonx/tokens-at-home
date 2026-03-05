@@ -3,11 +3,14 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { bodyLimit } from 'hono/body-limit';
+import { trimTrailingSlash } from 'hono/trailing-slash';
 import { getDb, initSchema } from './db/index.js';
 import { projectRoutes } from './routes/projects.js';
 import { contributorRoutes } from './routes/contributors.js';
 import { taskRoutes, abandonStaleTasks } from './routes/tasks.js';
 import { eventRoutes } from './routes/events.js';
+import { leaderboardRoutes } from './routes/leaderboard.js';
+import { uiRoutes } from './routes/ui.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
@@ -16,6 +19,7 @@ initSchema(db);
 
 const app = new Hono();
 
+app.use(trimTrailingSlash());
 app.use('*', logger());
 app.use('*', bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ error: 'Request body too large (max 512 KB)' }, 413) }));
 app.use('*', cors({
@@ -30,6 +34,8 @@ app.route('/projects', projectRoutes(db));
 app.route('/contributors', contributorRoutes(db));
 app.route('/tasks', taskRoutes(db));
 app.route('/events', eventRoutes(db));
+app.route('/leaderboard', leaderboardRoutes(db));
+app.route('/ui', uiRoutes(db));
 
 // Heartbeat sweep: abandon stale tasks every 60s
 setInterval(async () => {

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   RegisterProjectSchema,
@@ -9,7 +9,7 @@ import {
   type IssueComplexity,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { issues, projects } from '../db/schema.js';
+import { contributors, issues, projects, tasks } from '../db/schema.js';
 import { getContributorFromToken, extractBearerToken } from '../services/auth.js';
 
 async function fetchGitHubIssueData(
@@ -41,11 +41,32 @@ async function fetchGitHubIssueData(
 export function projectRoutes(db: Db) {
   const app = new Hono();
 
-  // List all projects (paginated)
+  // List all projects (paginated, with optional search/filter)
   app.get('/', async (c) => {
     const limit = Math.min(parseInt(c.req.query('limit') ?? '100', 10) || 100, 500);
     const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10) || 0, 0);
-    const all = await db.select().from(projects).limit(limit).offset(offset).all();
+    const q = c.req.query('q');
+    const language = c.req.query('language');
+    const sort = c.req.query('sort') ?? 'recent';
+
+    const conditions = [];
+    if (q) {
+      const pattern = `%${q}%`;
+      conditions.push(or(
+        sql`${projects.githubOwner} LIKE ${pattern}`,
+        sql`${projects.githubRepo} LIKE ${pattern}`,
+      ));
+    }
+    if (language) {
+      conditions.push(sql`${projects.languages} LIKE ${`%"${language}"%`}`);
+    }
+
+    const orderBy = sort === 'name' ? asc(projects.githubRepo) : desc(projects.createdAt);
+    const where = conditions.length > 0 ? and(...conditions as [ReturnType<typeof or>, ...ReturnType<typeof or>[]]) : undefined;
+
+    const all = where
+      ? await db.select().from(projects).where(where).orderBy(orderBy).limit(limit).offset(offset).all()
+      : await db.select().from(projects).orderBy(orderBy).limit(limit).offset(offset).all();
     return c.json(all.map(deserializeProject));
   });
 
@@ -144,6 +165,77 @@ export function projectRoutes(db: Db) {
 
     const issue = await db.select().from(issues).where(eq(issues.id, id)).get();
     return c.json(bodyWarning ? { ...issue, warning: bodyWarning } : issue, 201);
+  });
+
+  // Project stats
+  app.get('/:id/stats', async (c) => {
+    const projectId = c.req.param('id');
+    const project = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).get();
+    if (!project) return c.json({ error: 'Not found' }, 404);
+
+    const projectTasks = await db
+      .select({
+        contributorId: tasks.contributorId,
+        status: tasks.status,
+        tokensUsed: tasks.tokensUsed,
+        createdAt: tasks.createdAt,
+      })
+      .from(tasks)
+      .innerJoin(issues, eq(tasks.issueId, issues.id))
+      .where(eq(issues.projectId, projectId))
+      .all();
+
+    const totalTasksCompleted = projectTasks.filter((t) => t.status === 'completed').length;
+    const totalTokensConsumed = projectTasks
+      .filter((t) => t.status === 'completed')
+      .reduce((sum, t) => sum + (t.tokensUsed ?? 0), 0);
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().substring(0, 10);
+    const activeContributorIds = new Set(
+      projectTasks
+        .filter((t) => t.createdAt >= thirtyDaysAgoStr)
+        .map((t) => t.contributorId),
+    );
+
+    const availableIssues = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(and(eq(issues.projectId, projectId), eq(issues.status, 'available')))
+      .all();
+
+    // Top contributors by tasks completed
+    const contributorTaskCounts = new Map<string, number>();
+    for (const t of projectTasks.filter((t) => t.status === 'completed')) {
+      contributorTaskCounts.set(t.contributorId, (contributorTaskCounts.get(t.contributorId) ?? 0) + 1);
+    }
+
+    const topContributorIds = [...contributorTaskCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id]) => id);
+
+    const contributorRows = topContributorIds.length > 0
+      ? await db
+        .select({ id: contributors.id, githubUsername: contributors.githubUsername })
+        .from(contributors)
+        .all()
+      : [];
+    const usernameMap = new Map(contributorRows.map((r) => [r.id, r.githubUsername]));
+
+    const topContributors = topContributorIds.map((id) => ({
+      githubUsername: usernameMap.get(id) ?? id,
+      tasksCompleted: contributorTaskCounts.get(id) ?? 0,
+    }));
+
+    return c.json({
+      totalTasksCompleted,
+      totalTokensConsumed,
+      availableIssues: availableIssues.length,
+      activeContributors: activeContributorIds.size,
+      topContributors,
+    });
   });
 
   // List issues for a project
