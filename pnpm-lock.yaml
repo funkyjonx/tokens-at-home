@@ -55,8 +55,8 @@ importers:
   packages/coordinator:
     dependencies:
       '@hono/node-server':
-        specifier: ^1.13.0
-        version: 1.19.9(hono@4.12.3)
+        specifier: ^1.19.10
+        version: 1.19.10(hono@4.12.3)
       '@tah/shared':
         specifier: workspace:*
         version: link:../shared
@@ -734,8 +734,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@1.19.9':
-    resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
+  '@hono/node-server@1.19.10':
+    resolution: {integrity: sha512-hZ7nOssGqRgyV3FVVQdfi+U4q02uB23bpnYpdvNXkYTRRyWx84b7yf1ans+dnJ/7h41sGL3CeQTfO+ZGxuO+Iw==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -1970,7 +1970,7 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@hono/node-server@1.19.9(hono@4.12.3)':
+  '@hono/node-server@1.19.10(hono@4.12.3)':
     dependencies:
       hono: 4.12.3
 
