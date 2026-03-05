@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { bodyLimit } from 'hono/body-limit';
+import { trimTrailingSlash } from 'hono/trailing-slash';
 import { getDb, initSchema } from './db/index.js';
 import { projectRoutes } from './routes/projects.js';
 import { contributorRoutes } from './routes/contributors.js';
@@ -18,6 +19,7 @@ initSchema(db);
 
 const app = new Hono();
 
+app.use(trimTrailingSlash());
 app.use('*', logger());
 app.use('*', bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ error: 'Request body too large (max 512 KB)' }, 413) }));
 app.use('*', cors({
