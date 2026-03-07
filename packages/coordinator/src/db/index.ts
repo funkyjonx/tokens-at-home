@@ -17,7 +17,7 @@ export function getDb(url?: string) {
 
 export type Db = ReturnType<typeof getDb>;
 
-export function initSchema(_db: Db) {
+export function initSchema() {
   const sqlite = _sqlite;
   if (!sqlite) throw new Error('Call getDb() before initSchema()');
 

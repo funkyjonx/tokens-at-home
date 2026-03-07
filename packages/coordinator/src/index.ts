@@ -15,7 +15,7 @@ import { uiRoutes } from './routes/ui.js';
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
 const db = getDb();
-initSchema(db);
+initSchema();
 
 const app = new Hono();
 

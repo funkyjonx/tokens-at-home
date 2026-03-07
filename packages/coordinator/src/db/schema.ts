@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
@@ -31,7 +31,9 @@ export const projectPins = sqliteTable('project_pins', {
   contributorId: text('contributor_id').notNull().references(() => contributors.id),
   projectId: text('project_id').notNull().references(() => projects.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-});
+}, (table) => ({
+  uniq: uniqueIndex('project_pins_contributor_project_uniq').on(table.contributorId, table.projectId),
+}));
 
 export const issues = sqliteTable('issues', {
   id: text('id').primaryKey(),
