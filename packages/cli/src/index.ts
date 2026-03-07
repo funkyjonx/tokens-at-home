@@ -6,6 +6,7 @@ import { taskCommand } from './commands/task.js';
 import { configCommand } from './commands/config.js';
 import { activityCommand } from './commands/activity.js';
 import { leaderboardCommand } from './commands/leaderboard.js';
+import { startCommand } from './commands/start.js';
 import { TahApiError } from './api.js';
 import { loadConfig } from './config.js';
 
@@ -16,6 +17,7 @@ program
   .description('Tokens at Home - contribute your unused Claude capacity to open source')
   .version('0.0.1');
 
+program.addCommand(startCommand());
 program.addCommand(configCommand());
 program.addCommand(projectCommand());
 program.addCommand(contributorCommand());
