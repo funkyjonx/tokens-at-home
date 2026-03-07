@@ -363,6 +363,7 @@ export function projectCommand(): Command {
       const [owner, repo] = ownerRepo.split('/');
       if (!owner || !repo) { console.error('Format: tah project pin owner/repo'); process.exit(1); }
       const config = loadConfig();
+      requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
       const project = await api.findProjectByRepo(owner, repo);
       if (!project) { console.error(`Project ${ownerRepo} not found. Register it with: tah project add ${ownerRepo}`); process.exit(1); }
@@ -377,6 +378,7 @@ export function projectCommand(): Command {
       const [owner, repo] = ownerRepo.split('/');
       if (!owner || !repo) { console.error('Format: tah project unpin owner/repo'); process.exit(1); }
       const config = loadConfig();
+      requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
       const project = await api.findProjectByRepo(owner, repo);
       if (!project) { console.error(`Project ${ownerRepo} not found.`); process.exit(1); }
