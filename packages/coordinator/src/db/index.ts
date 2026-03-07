@@ -20,7 +20,7 @@ export type Db = ReturnType<typeof getDb>;
 export function initSchema(_db: Db) {
   const sqlite = _sqlite;
   if (!sqlite) throw new Error('Call getDb() before initSchema()');
-  // Run inline migrations for SQLite MVP (no migration files needed)
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
@@ -40,23 +40,19 @@ export function initSchema(_db: Db) {
       id TEXT PRIMARY KEY,
       github_username TEXT NOT NULL UNIQUE,
       languages TEXT NOT NULL DEFAULT '[]',
-      autonomy TEXT NOT NULL DEFAULT 'review_before_pr',
-      cycle_reset_date TEXT,
       max_concurrent INTEGER NOT NULL DEFAULT 1,
+      max_complexity TEXT NOT NULL DEFAULT 'medium',
       trust_score REAL NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS pledges (
+    CREATE TABLE IF NOT EXISTS project_pins (
       id TEXT PRIMARY KEY,
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
       project_id TEXT NOT NULL REFERENCES projects(id),
-      max_tasks INTEGER NOT NULL,
-      max_complexity TEXT NOT NULL DEFAULT 'large',
-      budget_percent INTEGER NOT NULL DEFAULT 100,
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(contributor_id, project_id)
     );
 
     CREATE TABLE IF NOT EXISTS issues (
@@ -77,15 +73,23 @@ export function initSchema(_db: Db) {
       id TEXT PRIMARY KEY,
       issue_id TEXT NOT NULL REFERENCES issues(id),
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      pledge_id TEXT,
       status TEXT NOT NULL DEFAULT 'dispatched',
+      phase_started_at TEXT,
       tokens_used INTEGER,
       pr_url TEXT,
       summary TEXT,
       error_details TEXT,
-      last_heartbeat_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS task_events (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id),
+      phase TEXT NOT NULL,
+      tokens_used INTEGER,
+      elapsed_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -95,31 +99,12 @@ export function initSchema(_db: Db) {
       expires_at TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-
-    CREATE TABLE IF NOT EXISTS watchlist (
-      id TEXT PRIMARY KEY,
-      contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      project_id TEXT NOT NULL REFERENCES projects(id),
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(contributor_id, project_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS generic_pledges (
-      id TEXT PRIMARY KEY,
-      contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      max_tasks INTEGER NOT NULL,
-      max_complexity TEXT NOT NULL DEFAULT 'large',
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
   `);
 
   // Additive column migrations (safe to re-run; errors mean column already exists)
   const addColumns = [
-    "ALTER TABLE pledges ADD COLUMN max_tasks INTEGER NOT NULL DEFAULT 10",
-    "ALTER TABLE pledges ADD COLUMN max_complexity TEXT NOT NULL DEFAULT 'large'",
-    "ALTER TABLE pledges ADD COLUMN budget_percent INTEGER NOT NULL DEFAULT 100",
-    "ALTER TABLE pledges ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE contributors ADD COLUMN max_complexity TEXT NOT NULL DEFAULT 'medium'",
+    "ALTER TABLE tasks ADD COLUMN phase_started_at TEXT",
     "ALTER TABLE projects ADD COLUMN task_types TEXT NOT NULL DEFAULT '[\"code\"]'",
     "ALTER TABLE projects ADD COLUMN trust_threshold REAL NOT NULL DEFAULT 0",
     "ALTER TABLE projects ADD COLUMN claude_md TEXT",
