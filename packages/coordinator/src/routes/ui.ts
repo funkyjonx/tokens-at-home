@@ -99,6 +99,20 @@ export function uiRoutes(db: Db) {
       .from(tasks)
       .get();
 
+    const inProgressTasks = await db.select({
+      id: tasks.id, status: tasks.status, phaseStartedAt: tasks.phaseStartedAt,
+      githubUsername: contributors.githubUsername,
+      issueTitle: issues.title, githubNumber: issues.githubNumber,
+      githubOwner: projects.githubOwner, githubRepo: projects.githubRepo,
+    }).from(tasks)
+      .innerJoin(contributors, eq(tasks.contributorId, contributors.id))
+      .innerJoin(issues, eq(tasks.issueId, issues.id))
+      .innerJoin(projects, eq(issues.projectId, projects.id))
+      .where(sql`${tasks.status} NOT IN ('completed', 'failed')`)
+      .orderBy(sql`${tasks.updatedAt} DESC`)
+      .limit(5)
+      .all();
+
     // Recent activity: last 20 completed tasks with contributor and issue info
     const recentTasks = await db
       .select({
@@ -141,6 +155,20 @@ export function uiRoutes(db: Db) {
           <div class="label">Tokens Donated</div>
         </div>
       </div>
+      ${inProgressTasks.length > 0 ? html`
+        <h2>🔴 Live</h2>
+        <table>
+          <thead><tr><th>Contributor</th><th>Project</th><th>Issue</th><th>Phase</th></tr></thead>
+          <tbody>
+            ${inProgressTasks.map((t) => html`<tr>
+              <td><a href="/ui/contributors/${t.githubUsername}">@${t.githubUsername}</a></td>
+              <td>${t.githubOwner}/${t.githubRepo}</td>
+              <td>#${t.githubNumber} ${t.issueTitle}</td>
+              <td>${t.status}</td>
+            </tr>`)}
+          </tbody>
+        </table>
+      ` : ''}
       <h2>Recent Activity</h2>
       ${recentTasks.length === 0
         ? html`<p class="empty">No completed tasks yet.</p>`
@@ -504,6 +532,68 @@ export function uiRoutes(db: Db) {
       }
     `;
     return c.html(layout('Leaderboard', content) as unknown as string);
+  });
+
+  // Contributor profile
+  app.get('/contributors/:username', async (c) => {
+    const { username } = c.req.param();
+    const contributor = await db.select().from(contributors)
+      .where(eq(contributors.githubUsername, username)).get();
+    if (!contributor) return c.notFound();
+
+    const allTasks = await db.select({
+      status: tasks.status, tokensUsed: tasks.tokensUsed, createdAt: tasks.createdAt,
+      prUrl: tasks.prUrl, issueId: tasks.issueId,
+    }).from(tasks).where(eq(tasks.contributorId, contributor.id)).all();
+
+    const completed = allTasks.filter((t) => t.status === 'completed');
+    const totalTokens = completed.reduce((s, t) => s + (t.tokensUsed ?? 0), 0);
+    const terminal = allTasks.filter((t) => ['completed', 'failed'].includes(t.status));
+    const successRate = terminal.length > 0 ? completed.length / terminal.length : 0;
+
+    const langs = JSON.parse(contributor.languages) as string[];
+    const githubProfileUrl = `https://github.com/${contributor.githubUsername}`;
+
+    const content = html`
+      <div class="card" style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1.5rem">
+        <img src="https://github.com/${contributor.githubUsername}.png?size=80"
+             style="width:80px;height:80px;border-radius:50%;border:2px solid #dee2e6" />
+        <div>
+          <h1 style="margin-bottom:0.25rem">
+            <a href="${githubProfileUrl}" target="_blank" style="color:#212529">
+              @${contributor.githubUsername}
+            </a>
+          </h1>
+          <div style="color:#6c757d;font-size:0.9rem">
+            Contributing since ${contributor.createdAt.substring(0, 10)}
+            &nbsp;·&nbsp;
+            ${langs.map((l) => html`<span class="badge">${l}</span>`)}
+          </div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="value">${fmtNum(completed.length)}</div><div class="label">Tasks Completed</div></div>
+        <div class="stat-card"><div class="value">${fmtNum(Math.round(totalTokens / 1000))}K</div><div class="label">Tokens Donated</div></div>
+        <div class="stat-card"><div class="value">${fmtPct(successRate)}</div><div class="label">Success Rate</div></div>
+      </div>
+      <h2>Recent Contributions</h2>
+      ${completed.length === 0
+        ? html`<p class="empty">No completed tasks yet.</p>`
+        : html`<table>
+          <thead><tr><th>Issue</th><th>Tokens</th><th>Date</th><th>PR</th></tr></thead>
+          <tbody>
+            ${completed.slice(0, 20).map((t) => html`<tr>
+              <td>${t.issueId}</td>
+              <td>${fmtNum(t.tokensUsed ?? 0)}</td>
+              <td>${t.createdAt.substring(0, 10)}</td>
+              <td>${t.prUrl ? html`<a href="${t.prUrl}" target="_blank">View PR</a>` : '—'}</td>
+            </tr>`)}
+          </tbody>
+        </table>`
+      }
+    `;
+
+    return c.html(layout(`@${contributor.githubUsername}`, content) as unknown as string);
   });
 
   return app;
