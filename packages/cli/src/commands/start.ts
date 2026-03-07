@@ -3,21 +3,13 @@ import { createInterface } from 'readline';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { execSync } from 'child_process';
 import { loadConfig, saveConfig, DEFAULT_COORDINATOR_URL } from '../config.js';
 import { TahApiClient } from '../api.js';
+import { getGithubUsername } from '../utils.js';
 import type { Contributor, IssueComplexity } from '@tah/shared';
 
 function prompt(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
   return new Promise((resolve) => rl.question(question, (answer) => resolve(answer.trim())));
-}
-
-function getGithubUsername(): string | null {
-  try {
-    return execSync('gh api user --jq .login', { encoding: 'utf8' }).trim();
-  } catch {
-    return null;
-  }
 }
 
 function findWorkerBin(): string {
