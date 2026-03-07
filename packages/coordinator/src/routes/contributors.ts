@@ -341,8 +341,10 @@ export function contributorRoutes(db: Db) {
 }
 
 function deserializeContributor(c: typeof contributors.$inferSelect) {
+  const { trustScore, ...rest } = c;
+  void trustScore; // intentionally omitted
   return {
-    ...c,
+    ...rest,
     languages: JSON.parse(c.languages) as string[],
     available: Boolean(c.available),
   };

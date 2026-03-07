@@ -22,11 +22,10 @@ export function contributorCommand(): Command {
       }
 
       console.log(`GitHub: ${contributor.githubUsername}`);
-      console.log(`ID: ${contributor.id}`);
       console.log(`Languages: ${contributor.languages.join(', ')}`);
-      console.log(`Trust score: ${contributor.trustScore}`);
       console.log(`Available: ${contributor.available}`);
       console.log(`Max concurrent: ${contributor.maxConcurrent}`);
+      console.log(`Max complexity: ${contributor.maxComplexity}`);
     });
 
   cmd

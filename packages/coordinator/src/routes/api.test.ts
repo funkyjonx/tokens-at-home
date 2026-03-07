@@ -164,6 +164,17 @@ describe('Coordinator API', () => {
       const res = await app.request('/contributors/me');
       expect(res.status).toBe(401);
     });
+
+    it('does not expose trustScore, autonomy, or cycleResetDate', async () => {
+      const res = await app.request('/contributors/me', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body).not.toHaveProperty('trustScore');
+      expect(body).not.toHaveProperty('autonomy');
+      expect(body).not.toHaveProperty('cycleResetDate');
+    });
   });
 
   describe('POST /projects', () => {
