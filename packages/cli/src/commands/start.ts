@@ -98,9 +98,17 @@ export function startCommand(): Command {
       const maxConcurrentStr = await prompt(rl, '  Max concurrent tasks [1]: ');
       const maxConcurrent = parseInt(maxConcurrentStr || '1', 10) || 1;
 
-      const maxComplexityRaw = await prompt(rl, '  Max complexity (trivial/small/medium/large) [medium]: ');
-      const maxComplexity = (['trivial', 'small', 'medium', 'large'].includes(maxComplexityRaw)
-        ? maxComplexityRaw : 'medium') as IssueComplexity;
+      const validComplexities = ['trivial', 'small', 'medium', 'large'];
+      let maxComplexity: IssueComplexity = 'medium';
+      while (true) {
+        const raw = await prompt(rl, '  Max complexity (trivial/small/medium/large) [medium]: ');
+        if (!raw) break; // accept default
+        if (validComplexities.includes(raw)) {
+          maxComplexity = raw as IssueComplexity;
+          break;
+        }
+        console.log(`  Invalid value "${raw}". Choose: trivial, small, medium, large`);
+      }
 
       rl.close();
 
