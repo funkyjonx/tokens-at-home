@@ -1,8 +1,6 @@
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { execFileSync } from 'child_process';
-import { WorkerConfigSchema } from '@tah/shared';
 import { CoordinatorClient } from './poller.js';
 import { executeTask, type ExecutionResult } from './executor.js';
 import { humanReview } from './reviewer.js';
@@ -11,21 +9,21 @@ import { DEFAULT_WORK_DIR, DEFAULT_LOG_DIR } from './sandbox.js';
 import { loadConfig } from './config.js';
 
 const POLL_INTERVAL_MS = 30_000;
-const HEARTBEAT_INTERVAL_MS = 60_000;
+const PROGRESS_INTERVAL_MS = 60_000;
 
 let running = true;
-let currentHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let currentProgressTimer: ReturnType<typeof setInterval> | null = null;
 
 process.on('SIGINT', () => {
   console.log('\n[worker] Shutting down...');
   running = false;
-  if (currentHeartbeatTimer) clearInterval(currentHeartbeatTimer);
+  if (currentProgressTimer) clearInterval(currentProgressTimer);
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   running = false;
-  if (currentHeartbeatTimer) clearInterval(currentHeartbeatTimer);
+  if (currentProgressTimer) clearInterval(currentProgressTimer);
 });
 
 function preflight(): void {
@@ -56,17 +54,6 @@ export async function startWorker(configPath?: string) {
 
   const client = new CoordinatorClient(config);
 
-  // Warn if contributor has no active pledges of any kind — they'll never receive tasks
-  const [pledges, genericPledges] = await Promise.all([
-    client.getPledges(),
-    client.getGenericPledges(),
-  ]);
-  const activePledges = pledges.filter((p) => p.active);
-  const activeGenericPledges = genericPledges.filter((p) => p.active);
-  if (activePledges.length === 0 && activeGenericPledges.length === 0) {
-    console.warn('[worker] Warning: you have no active pledges. Run `tah contributor pledge <project-id> <max-tasks>` or `tah contributor pledge-any <max-tasks>` to pledge capacity.');
-  }
-
   console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
 
@@ -79,7 +66,7 @@ export async function startWorker(configPath?: string) {
       if (!assignment) {
         emptyPolls++;
         if (emptyPolls % 5 === 0) {
-          console.log(`[worker] Waiting for tasks... (${emptyPolls} polls, no match yet — check your pledges with \`tah contributor pledges\`)`);
+          console.log(`[worker] Waiting for tasks... (${emptyPolls} polls — pin projects with \`tah project pin <owner/repo>\`)`);
         }
         await sleep(config.pollIntervalMs ?? POLL_INTERVAL_MS);
         continue;
@@ -90,36 +77,42 @@ export async function startWorker(configPath?: string) {
       const { task, issue, project } = assignment;
       console.log(`[worker] Task received: ${task.id} (${project.githubOwner}/${project.githubRepo}#${issue.githubNumber})`);
 
-      // Start heartbeat loop
-      currentHeartbeatTimer = setInterval(async () => {
+      let currentPhase = 'working';
+      let currentTokens = 0;
+      const taskStartMs = Date.now();
+
+      currentProgressTimer = setInterval(async () => {
         try {
-          const hb = await client.sendHeartbeat(task.id);
-          if (hb.cancel) {
-            console.log('[worker] Coordinator requested task cancellation');
-            running = false;
-          }
+          await client.sendProgress(task.id, currentPhase, currentTokens, Date.now() - taskStartMs);
         } catch (err) {
-          console.error('[worker] Heartbeat error:', err);
+          console.error('[worker] Progress update error:', err);
         }
-      }, HEARTBEAT_INTERVAL_MS);
+      }, PROGRESS_INTERVAL_MS);
 
       let result: ExecutionResult | undefined;
       try {
-        // Update status: cloning
-        await client.updateStatus(task.id, 'cloning');
+        console.log(`[1/4] Cloning...`);
+        currentPhase = 'cloning';
+        await client.sendProgress(task.id, 'cloning');
 
         result = await executeTask(task, issue, project, workDir, logDir);
+
+        console.log(`      done (${Math.round((Date.now() - taskStartMs) / 1000)}s)`);
 
         if (!result.success || !result.claudeOutput || !result.repoPath) {
           throw new Error(result.error ?? 'Execution failed');
         }
 
-        // Human review if required (default: review_before_pr)
-        const needsReview = (config.autonomy ?? 'review_before_pr') !== 'full';
+        currentTokens = result.claudeOutput.tokensUsed;
+
+        // Human review if required
+        const needsReview = true; // always review before PR
 
         let approved = true;
         if (needsReview) {
-          await client.updateStatus(task.id, 'review');
+          console.log(`[3/4] Human review...`);
+          currentPhase = 'review';
+          await client.sendProgress(task.id, 'review', currentTokens, Date.now() - taskStartMs);
           const decision = await humanReview(result.repoPath, issue, project);
           approved = decision.approved;
           if (!approved) {
@@ -128,7 +121,9 @@ export async function startWorker(configPath?: string) {
         }
 
         // Submit PR
-        await client.updateStatus(task.id, 'submitting');
+        console.log(`[4/4] Submitting PR...`);
+        currentPhase = 'submitting';
+        await client.sendProgress(task.id, 'submitting', currentTokens, Date.now() - taskStartMs);
         const pr = await createPr(
           result.repoPath,
           task,
@@ -146,24 +141,22 @@ export async function startWorker(configPath?: string) {
           result.claudeOutput.summary,
         );
 
-        console.log(`[worker] Task ${task.id} completed. PR: ${pr.prUrl}`);
+        console.log(`[ok]  Done -> ${pr.prUrl}`);
+        console.log(`      ${result.claudeOutput.tokensUsed.toLocaleString('en-US')} tokens donated`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[worker] Task ${task.id} failed: ${msg}`);
-        await client.failTask(task.id, msg);
+        await client.failTask(task.id, msg, currentTokens || undefined);
       } finally {
-        if (currentHeartbeatTimer) {
-          clearInterval(currentHeartbeatTimer);
-          currentHeartbeatTimer = null;
+        if (currentProgressTimer) {
+          clearInterval(currentProgressTimer);
+          currentProgressTimer = null;
         }
-        // Clean up work directory to avoid unbounded disk growth
-        if (result?.taskWorkDir) {
-          try {
-            rmSync(result.taskWorkDir, { recursive: true, force: true });
-          } catch {
-            // non-fatal — log dir is kept
-          }
-        }
+        // Clean up work directory unconditionally
+        const taskWorkDir = join(workDir, task.id);
+        try {
+          rmSync(taskWorkDir, { recursive: true, force: true });
+        } catch { /* non-fatal */ }
       }
     } catch (err) {
       console.error('[worker] Poll error:', err);

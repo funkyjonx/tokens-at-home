@@ -154,8 +154,8 @@ async function runClaude(
 
     const timeout = setTimeout(() => {
       proc.kill();
-      reject(new Error('Claude timed out after 10 minutes'));
-    }, 10 * 60 * 1000);
+      reject(new Error('Claude timed out after 40 minutes'));
+    }, 40 * 60 * 1000);
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
