@@ -356,6 +356,34 @@ export function projectCommand(): Command {
       }
     });
 
+  cmd
+    .command('pin <ownerRepo>')
+    .description('Pin a project — worker will prioritize its issues')
+    .action(async (ownerRepo: string) => {
+      const [owner, repo] = ownerRepo.split('/');
+      if (!owner || !repo) { console.error('Format: tah project pin owner/repo'); process.exit(1); }
+      const config = loadConfig();
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      const project = await api.findProjectByRepo(owner, repo);
+      if (!project) { console.error(`Project ${ownerRepo} not found. Register it with: tah project add ${ownerRepo}`); process.exit(1); }
+      await api.pinProject(project.id);
+      console.log(`Pinned ${ownerRepo}. Worker will prioritize this project's issues.`);
+    });
+
+  cmd
+    .command('unpin <ownerRepo>')
+    .description('Remove a project pin')
+    .action(async (ownerRepo: string) => {
+      const [owner, repo] = ownerRepo.split('/');
+      if (!owner || !repo) { console.error('Format: tah project unpin owner/repo'); process.exit(1); }
+      const config = loadConfig();
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      const project = await api.findProjectByRepo(owner, repo);
+      if (!project) { console.error(`Project ${ownerRepo} not found.`); process.exit(1); }
+      await api.unpinProject(project.id);
+      console.log(`Unpinned ${ownerRepo}.`);
+    });
+
   // Shorthand alias
   cmd
     .command('issues')

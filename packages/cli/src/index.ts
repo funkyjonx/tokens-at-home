@@ -7,6 +7,7 @@ import { configCommand } from './commands/config.js';
 import { activityCommand } from './commands/activity.js';
 import { leaderboardCommand } from './commands/leaderboard.js';
 import { startCommand } from './commands/start.js';
+import { statsCommand } from './commands/stats.js';
 import { TahApiError } from './api.js';
 import { loadConfig } from './config.js';
 
@@ -25,6 +26,7 @@ program.addCommand(workerCommand());
 program.addCommand(taskCommand());
 program.addCommand(activityCommand());
 program.addCommand(leaderboardCommand());
+program.addCommand(statsCommand());
 
 function handleError(err: unknown): never {
   if (err instanceof TahApiError) {

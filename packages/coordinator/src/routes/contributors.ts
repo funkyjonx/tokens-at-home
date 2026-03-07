@@ -6,7 +6,7 @@ import {
   SetAvailableSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { contributors, projects, tasks, authTokens, projectPins } from '../db/schema.js';
+import { contributors, projects, tasks, issues, authTokens, projectPins } from '../db/schema.js';
 import {
   createAuthToken,
   getContributorFromToken,
@@ -258,6 +258,65 @@ export function contributorRoutes(db: Db) {
       .all();
 
     return c.json(pins);
+  });
+
+  app.get('/:username/stats', async (c) => {
+    const { username } = c.req.param();
+    const contributor = await db.select().from(contributors)
+      .where(eq(contributors.githubUsername, username)).get();
+    if (!contributor) return c.json({ error: 'Not found' }, 404);
+
+    const allTasks = await db.select({
+      status: tasks.status, tokensUsed: tasks.tokensUsed,
+      createdAt: tasks.createdAt, issueId: tasks.issueId,
+    }).from(tasks).where(eq(tasks.contributorId, contributor.id)).all();
+
+    const completed = allTasks.filter((t) => t.status === 'completed');
+    const failed = allTasks.filter((t) => t.status === 'failed');
+    const totalTokens = completed.reduce((s, t) => s + (t.tokensUsed ?? 0), 0);
+    const successRate = (completed.length + failed.length) > 0
+      ? completed.length / (completed.length + failed.length) : 0;
+
+    const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
+    const thisMonthCompleted = completed.filter((t) => new Date(t.createdAt) >= monthAgo);
+    const thisMonthTokens = thisMonthCompleted.reduce((s, t) => s + (t.tokensUsed ?? 0), 0);
+
+    const allStats = await db.select({
+      contributorId: tasks.contributorId,
+      tokens: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
+    }).from(tasks).where(eq(tasks.status, 'completed')).groupBy(tasks.contributorId)
+      .orderBy(sql`tokens DESC`).all();
+    const allTimeRank = allStats.findIndex((r) => r.contributorId === contributor.id) + 1;
+
+    const monthStats = await db.select({
+      contributorId: tasks.contributorId,
+      tokens: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
+    }).from(tasks).where(and(eq(tasks.status, 'completed'), sql`${tasks.createdAt} >= datetime('now', '-30 days')`))
+      .groupBy(tasks.contributorId).orderBy(sql`tokens DESC`).all();
+    const monthRank = monthStats.findIndex((r) => r.contributorId === contributor.id) + 1;
+
+    const projectTaskCounts = new Map<string, number>();
+    for (const t of completed) {
+      const issue = await db.select({ projectId: issues.projectId }).from(issues)
+        .where(eq(issues.id, t.issueId)).get();
+      if (issue) projectTaskCounts.set(issue.projectId, (projectTaskCounts.get(issue.projectId) ?? 0) + 1);
+    }
+    const topProjectIds = [...projectTaskCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const topProjects = (await Promise.all(topProjectIds.map(async ([pid, count]) => {
+      const p = await db.select({ githubOwner: projects.githubOwner, githubRepo: projects.githubRepo })
+        .from(projects).where(eq(projects.id, pid)).get();
+      return p ? { ...p, tasksCompleted: count } : null;
+    }))).filter(Boolean);
+
+    return c.json({
+      githubUsername: contributor.githubUsername,
+      memberSince: contributor.createdAt,
+      allTime: { tasksCompleted: completed.length, tokensDonated: totalTokens, successRate, rank: allTimeRank },
+      thisMonth: { tasksCompleted: thisMonthCompleted.length, tokensDonated: thisMonthTokens, rank: monthRank },
+      topProjects,
+      bestStreak: 0,
+      currentStreak: 0,
+    });
   });
 
   app.delete('/me', async (c) => {

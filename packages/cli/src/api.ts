@@ -98,4 +98,17 @@ export class TahApiClient {
     if (!res.ok) return this.throwHttpError('DELETE', path, res);
     return res.json() as Promise<T>;
   }
+
+  async findProjectByRepo(owner: string, repo: string): Promise<{ id: string } | null> {
+    const results = await this.get<Array<{ id: string; githubOwner: string; githubRepo: string }>>(`/projects?q=${encodeURIComponent(owner + '/' + repo)}`);
+    return results.find((p) => p.githubOwner === owner && p.githubRepo === repo) ?? null;
+  }
+
+  async pinProject(projectId: string): Promise<void> {
+    await this.post('/contributors/me/pins', { projectId });
+  }
+
+  async unpinProject(projectId: string): Promise<void> {
+    await this.delete(`/contributors/me/pins/${projectId}`);
+  }
 }
