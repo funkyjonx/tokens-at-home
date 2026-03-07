@@ -21,6 +21,9 @@ export function scoreMatch(
   const overlap = projectLangs.filter((l) => contributorLangs.has(l)).length;
   const langScore = projectLangs.length > 0 ? overlap / projectLangs.length : 0.5;
 
+  // Hard filter: if the project declares languages and the contributor speaks none of them, skip
+  if (projectLangs.length > 0 && overlap === 0) return null;
+
   // Prefer more complex issues (more meaningful work)
   const complexityScore = COMPLEXITY_ORDER[issue.estimatedComplexity] / 4;
 

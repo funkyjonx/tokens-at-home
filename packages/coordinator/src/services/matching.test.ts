@@ -147,23 +147,28 @@ describe('scoreMatch', () => {
     expect(pinnedScore!).toBeGreaterThan(unpinnedScore!);
   });
 
-  it('full language overlap gives higher score than no overlap', () => {
-    const fullOverlap = { ...contributor, languages: ['typescript', 'rust'] };
-    const noOverlap = { ...contributor, languages: ['python', 'go'] };
-    const fullScore = scoreMatch(fullOverlap, issue, project, false);
-    const noScore = scoreMatch(noOverlap, issue, project, false);
-    expect(fullScore!).toBeGreaterThan(noScore!);
-  });
-
-  it('partial language overlap gives score between full and no overlap', () => {
+  it('full language overlap gives higher score than partial overlap', () => {
     const fullOverlap = { ...contributor, languages: ['typescript', 'rust'] };
     const partialOverlap = { ...contributor, languages: ['typescript', 'python'] };
-    const noOverlap = { ...contributor, languages: ['python', 'go'] };
+    const fullScore = scoreMatch(fullOverlap, issue, project, false);
+    const partialScore = scoreMatch(partialOverlap, issue, project, false);
+    expect(fullScore!).toBeGreaterThan(partialScore!);
+  });
+
+  it('partial language overlap gives lower score than full overlap', () => {
+    const fullOverlap = { ...contributor, languages: ['typescript', 'rust'] };
+    const partialOverlap = { ...contributor, languages: ['typescript', 'python'] };
     const fullScore = scoreMatch(fullOverlap, issue, project, false)!;
     const partialScore = scoreMatch(partialOverlap, issue, project, false)!;
-    const noScore = scoreMatch(noOverlap, issue, project, false)!;
     expect(fullScore).toBeGreaterThan(partialScore);
-    expect(partialScore).toBeGreaterThan(noScore);
+    expect(partialScore).toBeGreaterThan(0);
+  });
+
+  it('returns null when contributor shares no languages with the project', () => {
+    const noOverlapContributor = { ...contributor, languages: ['rust'] };
+    const tsJsProject = { ...project, languages: ['typescript', 'javascript'] };
+    const result = scoreMatch(noOverlapContributor, issue, tsJsProject, false);
+    expect(result).toBeNull();
   });
 });
 
@@ -204,9 +209,14 @@ describe('findMatchForContributor', () => {
 
   it('returns null when contributor is at maxConcurrent', async () => {
     db.run(`UPDATE contributors SET max_concurrent = 1 WHERE id = 'contrib-1'`);
+    // Insert a separate issue that is already assigned (realistic DB state for an active task)
+    db.run(`
+      INSERT INTO issues (id, project_id, github_number, title, estimated_complexity, status)
+      VALUES ('issue-assigned', 'proj-1', 99, 'Active work', 'small', 'assigned')
+    `);
     db.run(`
       INSERT INTO tasks (id, issue_id, contributor_id, status)
-      VALUES ('task-1', 'issue-1', 'contrib-1', 'working')
+      VALUES ('task-1', 'issue-assigned', 'contrib-1', 'working')
     `);
     const result = await findMatchForContributor(db, 'contrib-1');
     expect(result).toBeNull();
