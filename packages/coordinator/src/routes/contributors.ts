@@ -308,14 +308,14 @@ export function contributorRoutes(db: Db) {
       contributorId: tasks.contributorId,
       tokens: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
     }).from(tasks).where(eq(tasks.status, 'completed')).groupBy(tasks.contributorId)
-      .orderBy(sql`tokens DESC`).all();
+      .orderBy(sql`sum(coalesce(${tasks.tokensUsed}, 0)) DESC`).all();
     const allTimeRank = allStats.findIndex((r) => r.contributorId === contributor.id) + 1;
 
     const monthStats = await db.select({
       contributorId: tasks.contributorId,
       tokens: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
     }).from(tasks).where(and(eq(tasks.status, 'completed'), sql`${tasks.createdAt} >= datetime('now', '-30 days')`))
-      .groupBy(tasks.contributorId).orderBy(sql`tokens DESC`).all();
+      .groupBy(tasks.contributorId).orderBy(sql`sum(coalesce(${tasks.tokensUsed}, 0)) DESC`).all();
     const monthRank = monthStats.findIndex((r) => r.contributorId === contributor.id) + 1;
 
     const projectTaskCounts = new Map<string, number>();

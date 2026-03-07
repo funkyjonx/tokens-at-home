@@ -883,4 +883,34 @@ describe('Coordinator API', () => {
       }
     });
   });
+
+  describe('GET /contributors/:username/stats', () => {
+    it('returns 404 for unknown contributor', async () => {
+      const res = await app.request('/contributors/nobody_xyz/stats');
+      expect(res.status).toBe(404);
+    });
+
+    it('returns stats for contributor with no completed tasks', async () => {
+      const res = await app.request('/contributors/testuser/stats');
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body).toHaveProperty('allTime');
+      expect(body).toHaveProperty('thisMonth');
+    });
+
+    it('returns correct stats shape', async () => {
+      const res = await app.request('/contributors/testuser/stats');
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body).toHaveProperty('githubUsername', 'testuser');
+      expect(body).toHaveProperty('allTime');
+      expect(body).toHaveProperty('thisMonth');
+      expect(body).toHaveProperty('topProjects');
+      const allTime = body.allTime as Record<string, unknown>;
+      expect(allTime).toHaveProperty('tasksCompleted');
+      expect(allTime).toHaveProperty('tokensDonated');
+      expect(allTime).toHaveProperty('successRate');
+      expect(allTime).toHaveProperty('rank');
+    });
+  });
 });
