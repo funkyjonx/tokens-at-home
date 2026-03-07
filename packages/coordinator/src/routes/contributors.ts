@@ -187,142 +187,66 @@ export function contributorRoutes(db: Db) {
     return c.json({ ok: true, available: parsed.data.available });
   });
 
-  // Pin a project (replaces pledges — requires auth)
-  app.post('/me/pledges', async (c) => {
+  // POST /me/pins — pin a project
+  app.post('/me/pins', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
 
-    const body = await c.req.json();
-    const projectId: string = body.projectId;
-    if (!projectId) return c.json({ error: 'projectId required' }, 400);
+    const body = await c.req.json().catch(() => ({})) as { projectId?: string };
+    if (!body.projectId || typeof body.projectId !== 'string') {
+      return c.json({ error: 'projectId required' }, 400);
+    }
 
     const project = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(eq(projects.id, body.projectId))
       .get();
     if (!project) return c.json({ error: 'Project not found' }, 404);
 
     const existing = await db
       .select({ id: projectPins.id })
       .from(projectPins)
-      .where(and(
-        eq(projectPins.contributorId, contributor.id),
-        eq(projectPins.projectId, projectId),
-      ))
+      .where(and(eq(projectPins.contributorId, contributor.id), eq(projectPins.projectId, body.projectId)))
       .get();
-    if (existing) return c.json({ error: 'Active pledge already exists for this project' }, 409);
+    if (existing) return c.json({ error: 'Already pinned' }, 409);
 
     const id = randomBytes(8).toString('hex');
-    await db.insert(projectPins).values({ id, contributorId: contributor.id, projectId });
+    await db.insert(projectPins).values({ id, contributorId: contributor.id, projectId: body.projectId });
     const pin = await db.select().from(projectPins).where(eq(projectPins.id, id)).get();
     return c.json(pin, 201);
   });
 
-  // List pinned projects (requires auth)
-  app.get('/me/pledges', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-
-    const pins = await db
-      .select()
-      .from(projectPins)
-      .where(eq(projectPins.contributorId, contributor.id))
-      .all();
-    return c.json(pins);
-  });
-
-  // Unpin a project (requires auth)
-  app.delete('/me/pledges/:pledgeId', async (c) => {
+  // DELETE /me/pins/:projectId — unpin a project
+  app.delete('/me/pins/:projectId', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
 
     const pin = await db
-      .select({ id: projectPins.id, contributorId: projectPins.contributorId })
+      .select({ id: projectPins.id })
       .from(projectPins)
-      .where(eq(projectPins.id, c.req.param('pledgeId')))
+      .where(and(eq(projectPins.contributorId, contributor.id), eq(projectPins.projectId, c.req.param('projectId'))))
       .get();
     if (!pin) return c.json({ error: 'Not found' }, 404);
-    if (pin.contributorId !== contributor.id) return c.json({ error: 'Forbidden' }, 403);
 
     await db.delete(projectPins).where(eq(projectPins.id, pin.id));
     return c.json({ ok: true });
   });
 
-  // --- Watchlist endpoints (backed by project_pins) ---
-
-  // Add a project to watchlist
-  app.post('/me/watchlist', async (c) => {
+  // GET /me/pins — list pinned projects
+  app.get('/me/pins', async (c) => {
     const token = extractBearerToken(c.req.header('Authorization'));
     if (!token) return c.json({ error: 'Unauthorized' }, 401);
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
 
-    const body = await c.req.json();
-    const projectId: string = body.projectId;
-    if (!projectId) return c.json({ error: 'projectId required' }, 400);
-
-    const project = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .get();
-    if (!project) return c.json({ error: 'Project not found' }, 404);
-
-    const existing = await db
-      .select({ id: projectPins.id })
-      .from(projectPins)
-      .where(and(
-        eq(projectPins.contributorId, contributor.id),
-        eq(projectPins.projectId, projectId),
-      ))
-      .get();
-    if (existing) return c.json({ error: 'Project already on watchlist' }, 409);
-
-    const id = randomBytes(8).toString('hex');
-    await db.insert(projectPins).values({ id, contributorId: contributor.id, projectId });
-    const entry = await db.select().from(projectPins).where(eq(projectPins.id, id)).get();
-    return c.json(entry, 201);
-  });
-
-  // Remove a project from watchlist
-  app.delete('/me/watchlist/:projectId', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-
-    const entry = await db
-      .select({ id: projectPins.id })
-      .from(projectPins)
-      .where(and(
-        eq(projectPins.contributorId, contributor.id),
-        eq(projectPins.projectId, c.req.param('projectId')),
-      ))
-      .get();
-    if (!entry) return c.json({ error: 'Not found' }, 404);
-
-    await db.delete(projectPins).where(eq(projectPins.id, entry.id));
-    return c.json({ ok: true });
-  });
-
-  // List watchlist (with project names)
-  app.get('/me/watchlist', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-
-    const entries = await db
+    const pins = await db
       .select({
         id: projectPins.id,
-        contributorId: projectPins.contributorId,
         projectId: projectPins.projectId,
         createdAt: projectPins.createdAt,
         githubOwner: projects.githubOwner,
@@ -333,46 +257,7 @@ export function contributorRoutes(db: Db) {
       .where(eq(projectPins.contributorId, contributor.id))
       .all();
 
-    return c.json(entries);
-  });
-
-  // --- Generic pledge endpoints (stubbed — use pins instead) ---
-
-  // Create a generic pledge (stub — returns success for backward compat)
-  app.post('/me/generic-pledges', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-
-    const body = await c.req.json();
-    const id = randomBytes(8).toString('hex');
-    return c.json({
-      id,
-      contributorId: contributor.id,
-      maxTasks: body.maxTasks ?? 1,
-      maxComplexity: body.maxComplexity ?? 'medium',
-      active: true,
-      createdAt: new Date().toISOString(),
-    }, 201);
-  });
-
-  // List generic pledges (stub — returns empty)
-  app.get('/me/generic-pledges', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-    return c.json([]);
-  });
-
-  // Deactivate a generic pledge (stub)
-  app.delete('/me/generic-pledges/:pledgeId', async (c) => {
-    const token = extractBearerToken(c.req.header('Authorization'));
-    if (!token) return c.json({ error: 'Unauthorized' }, 401);
-    const contributor = await getContributorFromToken(db, token);
-    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
-    return c.json({ ok: true });
+    return c.json(pins);
   });
 
   app.delete('/me', async (c) => {

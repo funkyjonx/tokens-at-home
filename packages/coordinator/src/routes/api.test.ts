@@ -353,11 +353,11 @@ describe('Coordinator API', () => {
       const issue = await iRes.json() as Issue;
       issueId = issue.id;
 
-      // Pledge to the project
-      await app.request('/contributors/me/pledges', {
+      // Pin the project
+      await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ projectId, maxTasks: 10 }),
+        body: JSON.stringify({ projectId }),
       });
     });
 
@@ -422,35 +422,39 @@ describe('Coordinator API', () => {
     });
   });
 
-  describe('Watchlist', () => {
+  describe('contributor pin endpoints', () => {
     let projectId: string;
 
     beforeEach(async () => {
       const pRes = await app.request('/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ githubOwner: 'watch', githubRepo: 'me', languages: ['typescript'] }),
+        body: JSON.stringify({ githubOwner: 'pinorg', githubRepo: 'pinrepo', languages: ['typescript'] }),
       });
       const project = await pRes.json() as Project;
       projectId = project.id;
     });
 
-    it('adds a project to the watchlist', async () => {
-      const res = await app.request('/contributors/me/watchlist', {
+    it('POST /contributors/me/pins adds a pin (201, returns pin object)', async () => {
+      const res = await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ projectId }),
       });
       expect(res.status).toBe(201);
+      const pin = await res.json() as { id: string; projectId: string; createdAt: string };
+      expect(pin.projectId).toBe(projectId);
+      expect(typeof pin.id).toBe('string');
+      expect(typeof pin.createdAt).toBe('string');
     });
 
-    it('rejects duplicate watchlist entry', async () => {
-      await app.request('/contributors/me/watchlist', {
+    it('POST /contributors/me/pins returns 409 if already pinned', async () => {
+      await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ projectId }),
       });
-      const res2 = await app.request('/contributors/me/watchlist', {
+      const res2 = await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ projectId }),
@@ -458,156 +462,43 @@ describe('Coordinator API', () => {
       expect(res2.status).toBe(409);
     });
 
-    it('lists watchlist with project names', async () => {
-      await app.request('/contributors/me/watchlist', {
+    it('DELETE /contributors/me/pins/:projectId removes a pin (200)', async () => {
+      await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ projectId }),
       });
-      const res = await app.request('/contributors/me/watchlist', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      expect(res.status).toBe(200);
-      const entries = await res.json() as { id: string; githubOwner: string; githubRepo: string }[];
-      expect(entries.length).toBe(1);
-      expect(entries[0]?.githubOwner).toBe('watch');
-      expect(entries[0]?.githubRepo).toBe('me');
-    });
-
-    it('removes a project from the watchlist', async () => {
-      await app.request('/contributors/me/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ projectId }),
-      });
-      const delRes = await app.request(`/contributors/me/watchlist/${projectId}`, {
+      const delRes = await app.request(`/contributors/me/pins/${projectId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(delRes.status).toBe(200);
+      const body = await delRes.json() as { ok: boolean };
+      expect(body.ok).toBe(true);
 
-      const listRes = await app.request('/contributors/me/watchlist', {
+      // Verify it's gone
+      const listRes = await app.request('/contributors/me/pins', {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      const entries = await listRes.json() as { id: string }[];
-      expect(entries.length).toBe(0);
+      const pins = await listRes.json() as { id: string }[];
+      expect(pins.length).toBe(0);
     });
 
-    it('returns 404 when removing a project not on watchlist', async () => {
-      const res = await app.request(`/contributors/me/watchlist/${projectId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      expect(res.status).toBe(404);
-    });
-  });
-
-  describe('Generic pledges', () => {
-    it('creates a generic pledge', async () => {
-      const res = await app.request('/contributors/me/generic-pledges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ maxTasks: 5, maxComplexity: 'medium' }),
-      });
-      expect(res.status).toBe(201);
-      const pledge = await res.json() as { maxTasks: number; maxComplexity: string; active: boolean };
-      expect(pledge.maxTasks).toBe(5);
-      expect(pledge.maxComplexity).toBe('medium');
-      expect(pledge.active).toBe(true);
-    });
-
-    it('lists generic pledges', async () => {
-      await app.request('/contributors/me/generic-pledges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ maxTasks: 3 }),
-      });
-      const res = await app.request('/contributors/me/generic-pledges', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      expect(res.status).toBe(200);
-      // Generic pledges are now stubs — list always returns empty
-      const pledges = await res.json() as { maxTasks: number }[];
-      expect(Array.isArray(pledges)).toBe(true);
-    });
-
-    it('deactivates a generic pledge', async () => {
-      const createRes = await app.request('/contributors/me/generic-pledges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ maxTasks: 2 }),
-      });
-      const pledge = await createRes.json() as { id: string };
-
-      const delRes = await app.request(`/contributors/me/generic-pledges/${pledge.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      expect(delRes.status).toBe(200);
-    });
-  });
-
-  describe('Auto-matching with generic pledges', () => {
-    let projectId: string;
-    let issueId: string;
-
-    beforeEach(async () => {
-      // Create project
-      const pRes = await app.request('/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ githubOwner: 'generic', githubRepo: 'test', languages: ['typescript'] }),
-      });
-      const project = await pRes.json() as Project;
-      projectId = project.id;
-
-      // Create issue
-      const iRes = await app.request(`/projects/${projectId}/issues`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ githubNumber: 77, title: 'Generic task', body: '', taskType: 'code' }),
-      });
-      const issue = await iRes.json() as Issue;
-      issueId = issue.id;
-
-      // Add project to watchlist
-      await app.request('/contributors/me/watchlist', {
+    it('GET /contributors/me/pins lists pins with project info', async () => {
+      await app.request('/contributors/me/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ projectId }),
       });
-
-      // Create a generic pledge
-      await app.request('/contributors/me/generic-pledges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ maxTasks: 10 }),
-      });
-    });
-
-    it('auto-assigns from watchlist when contributor is available with generic pledge', async () => {
-      await app.request('/contributors/me/available', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ available: true }),
-      });
-
-      const res = await app.request('/tasks/next', {
+      const res = await app.request('/contributors/me/pins', {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(res.status).toBe(200);
-
-      const body = await res.json() as { task: Task; issue: Issue; project: Project };
-      expect(body.task.contributorId).toBe(contributorId);
-      expect(body.issue.id).toBe(issueId);
-      expect(body.project.githubRepo).toBe('test');
-    });
-
-    it('returns 204 when not available (generic pledge)', async () => {
-      const res = await app.request('/tasks/next', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      expect(res.status).toBe(204);
+      const pins = await res.json() as { id: string; projectId: string; githubOwner: string; githubRepo: string; createdAt: string }[];
+      expect(pins.length).toBe(1);
+      expect(pins[0]?.projectId).toBe(projectId);
+      expect(pins[0]?.githubOwner).toBe('pinorg');
+      expect(pins[0]?.githubRepo).toBe('pinrepo');
     });
   });
 
