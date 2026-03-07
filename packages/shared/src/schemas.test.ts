@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   RegisterProjectSchema,
   RegisterContributorSchema,
-  CreatePledgeSchema,
   CompleteTaskSchema,
   FailTaskSchema,
 } from './schemas.js';
@@ -43,52 +42,21 @@ describe('RegisterProjectSchema', () => {
 });
 
 describe('RegisterContributorSchema', () => {
-  it('defaults autonomy to review_before_pr', () => {
+  it('defaults maxComplexity to medium', () => {
     const result = RegisterContributorSchema.parse({
       githubUsername: 'alice',
       languages: ['typescript'],
     });
-    expect(result.autonomy).toBe('review_before_pr');
-  });
-
-  it('accepts full autonomy', () => {
-    const result = RegisterContributorSchema.parse({
-      githubUsername: 'bob',
-      languages: ['rust'],
-      autonomy: 'full',
-    });
-    expect(result.autonomy).toBe('full');
-  });
-});
-
-describe('CreatePledgeSchema', () => {
-  it('rejects maxTasks = 0', () => {
-    expect(() =>
-      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 0 }),
-    ).toThrow();
-  });
-
-  it('rejects non-integer maxTasks', () => {
-    expect(() =>
-      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 2.5 }),
-    ).toThrow();
-  });
-
-  it('accepts valid maxTasks with default maxComplexity', () => {
-    const result = CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 5 });
-    expect(result.maxTasks).toBe(5);
-    expect(result.maxComplexity).toBe('large');
-  });
-
-  it('accepts explicit maxComplexity', () => {
-    const result = CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 3, maxComplexity: 'medium' });
     expect(result.maxComplexity).toBe('medium');
   });
 
-  it('rejects invalid maxComplexity', () => {
-    expect(() =>
-      CreatePledgeSchema.parse({ projectId: 'p1', maxTasks: 3, maxComplexity: 'huge' }),
-    ).toThrow();
+  it('accepts explicit maxComplexity', () => {
+    const result = RegisterContributorSchema.parse({
+      githubUsername: 'bob',
+      languages: ['rust'],
+      maxComplexity: 'large',
+    });
+    expect(result.maxComplexity).toBe('large');
   });
 });
 

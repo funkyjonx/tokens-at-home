@@ -9,8 +9,6 @@ export const IssueStatusSchema = z.enum([
 export const TaskStatusSchema = z.enum([
   'dispatched', 'cloning', 'working', 'review', 'submitting', 'completed', 'failed',
 ]);
-export const ContributorAutonomySchema = z.enum(['full', 'review_before_pr']);
-
 // Shared field validators
 const githubOwner = z.string()
   .min(1)
@@ -40,29 +38,10 @@ export type RegisterProjectInput = z.infer<typeof RegisterProjectSchema>;
 export const RegisterContributorSchema = z.object({
   githubUsername: githubOwner,
   languages: languageList,
-  autonomy: ContributorAutonomySchema.default('review_before_pr'),
-  cycleResetDate: z.string().datetime().optional(),
   maxConcurrent: z.number().int().min(1).max(5).default(1),
+  maxComplexity: IssueComplexitySchema.default('medium'),
 });
 export type RegisterContributorInput = z.infer<typeof RegisterContributorSchema>;
-
-export const CreatePledgeSchema = z.object({
-  projectId: z.string().min(1).max(32),
-  maxTasks: z.number().int().min(1).max(1000),
-  maxComplexity: IssueComplexitySchema.default('large'),
-});
-export type CreatePledgeInput = z.infer<typeof CreatePledgeSchema>;
-
-export const AddToWatchlistSchema = z.object({
-  projectId: z.string().min(1).max(32),
-});
-export type AddToWatchlistInput = z.infer<typeof AddToWatchlistSchema>;
-
-export const CreateGenericPledgeSchema = z.object({
-  maxTasks: z.number().int().min(1).max(1000),
-  maxComplexity: IssueComplexitySchema.default('large'),
-});
-export type CreateGenericPledgeInput = z.infer<typeof CreateGenericPledgeSchema>;
 
 export const SetAvailableSchema = z.object({
   available: z.boolean(),
@@ -107,15 +86,22 @@ export const FailTaskSchema = z.object({
 });
 export type FailTaskInput = z.infer<typeof FailTaskSchema>;
 
+export const ProgressEventSchema = z.object({
+  phase: z.string().min(1).max(50),
+  tokensUsed: z.number().int().min(0).optional(),
+  elapsedMs: z.number().int().min(0).optional(),
+});
+export type ProgressEventInput = z.infer<typeof ProgressEventSchema>;
+
 // Worker config stored locally
 export const WorkerConfigSchema = z.object({
   coordinatorUrl: z.string().url(),
   contributorId: z.string().min(1),
   authToken: z.string().min(1),
+  githubUsername: z.string().min(1),
+  maxComplexity: IssueComplexitySchema.default('medium'),
   pollIntervalMs: z.number().int().min(5_000).default(30_000),
   workDir: z.string().min(1).optional(),
   logDir: z.string().min(1).optional(),
-  autonomy: ContributorAutonomySchema.optional(),
-  githubUsername: z.string().optional(),
 });
 export type WorkerConfig = z.infer<typeof WorkerConfigSchema>;
