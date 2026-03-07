@@ -106,7 +106,6 @@ export function taskRoutes(db: Db) {
             id: taskId,
             issueId: match.issueId,
             contributorId: contributor.id,
-            pledgeId: match.pledgeId,
             status: 'dispatched',
             lastHeartbeatAt: now,
           }).run();
