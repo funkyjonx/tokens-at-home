@@ -71,7 +71,7 @@ export async function startWorker(configPath?: string) {
       if (!assignment) {
         emptyPolls++;
         if (emptyPolls % 5 === 0) {
-          console.log(`[worker] Waiting for tasks... (${emptyPolls} polls — pin projects with \`tah project pin <owner/repo>\`)`);
+          console.log(`[worker] Waiting for tasks... (${emptyPolls} polls)`);
         }
         await sleep(config.pollIntervalMs ?? POLL_INTERVAL_MS);
         continue;
