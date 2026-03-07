@@ -195,6 +195,18 @@ export function taskRoutes(db: Db) {
     const parsed = ProgressEventSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
+    // Guard 1: reject terminal phases
+    const PROGRESS_PHASES: TaskStatus[] = ['dispatched', 'cloning', 'working', 'review', 'submitting'];
+    if (!PROGRESS_PHASES.includes(parsed.data.phase)) {
+      return c.json({ error: 'Cannot set terminal status via progress endpoint' }, 400);
+    }
+
+    // Guard 2: reject already-terminal tasks
+    const TERMINAL_STATUSES: TaskStatus[] = ['completed', 'failed'];
+    if (TERMINAL_STATUSES.includes(task.status as TaskStatus)) {
+      return c.json({ error: 'Task is already in a terminal state' }, 409);
+    }
+
     const now = new Date().toISOString();
     const eventId = randomBytes(8).toString('hex');
 

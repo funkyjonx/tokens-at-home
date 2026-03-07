@@ -771,6 +771,99 @@ describe('Coordinator API', () => {
     });
   });
 
+  describe('POST /tasks/:id/progress', () => {
+    let projectId: string;
+    let issueId: string;
+    let taskId: string;
+
+    beforeEach(async () => {
+      // Create a project
+      const pRes = await app.request('/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubOwner: 'prog', githubRepo: 'repo', languages: ['typescript'] }),
+      });
+      const project = await pRes.json() as Project;
+      projectId = project.id;
+
+      // Register an issue
+      const iRes = await app.request(`/projects/${projectId}/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ githubNumber: 55, title: 'Progress issue', body: '', taskType: 'code' }),
+      });
+      const issue = await iRes.json() as Issue;
+      issueId = issue.id;
+
+      // Assign the task
+      const assignRes = await app.request('/tasks/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ issueId, contributorId }),
+      });
+      const task = await assignRes.json() as Task;
+      taskId = task.id;
+    });
+
+    it('records a phase event and updates task status', async () => {
+      const res = await app.request(`/tasks/${taskId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ phase: 'cloning' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { ok: boolean };
+      expect(body.ok).toBe(true);
+
+      // Verify task status updated
+      const taskRes = await app.request(`/tasks/${taskId}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(taskRes.status).toBe(200);
+      const updatedTask = await taskRes.json() as Task;
+      expect(updatedTask.status).toBe('cloning');
+    });
+
+    it('returns 400 for terminal status phases', async () => {
+      const res = await app.request(`/tasks/${taskId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ phase: 'completed' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error: string };
+      expect(body.error).toBe('Cannot set terminal status via progress endpoint');
+    });
+
+    it('returns 409 when task is already completed', async () => {
+      // Complete the task first
+      await app.request(`/tasks/${taskId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ prUrl: 'https://github.com/prog/repo/pull/1', tokensUsed: 1000, summary: 'done' }),
+      });
+
+      // Now try to post a progress event
+      const res = await app.request(`/tasks/${taskId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ phase: 'working' }),
+      });
+      expect(res.status).toBe(409);
+      const body = await res.json() as { error: string };
+      expect(body.error).toBe('Task is already in a terminal state');
+    });
+
+    it('returns 401 without auth', async () => {
+      const res = await app.request(`/tasks/${taskId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase: 'cloning' }),
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('GET /contributors (public directory)', () => {
     beforeEach(async () => {
       // Register second contributor
