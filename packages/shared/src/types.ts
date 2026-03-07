@@ -19,7 +19,7 @@ export const COMPLEXITY_ORDER: Record<IssueComplexity, number> = {
 };
 
 // Per-phase timeout in milliseconds
-export const PHASE_TIMEOUTS_MS: Record<string, number> = {
+export const PHASE_TIMEOUTS_MS: Partial<Record<TaskStatus, number>> = {
   dispatched:  2 * 60 * 1000,
   cloning:     3 * 60 * 1000,
   working:    45 * 60 * 1000,
@@ -106,7 +106,7 @@ export interface Task {
 export interface TaskEvent {
   id: string;
   taskId: string;
-  phase: string;
+  phase: TaskStatus;
   tokensUsed?: number;
   elapsedMs?: number;
   createdAt: string;

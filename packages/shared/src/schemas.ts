@@ -87,7 +87,7 @@ export const FailTaskSchema = z.object({
 export type FailTaskInput = z.infer<typeof FailTaskSchema>;
 
 export const ProgressEventSchema = z.object({
-  phase: z.string().min(1).max(50),
+  phase: TaskStatusSchema,
   tokensUsed: z.number().int().min(0).optional(),
   elapsedMs: z.number().int().min(0).optional(),
 });
