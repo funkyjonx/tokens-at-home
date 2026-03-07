@@ -1,22 +1,23 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   AssignTaskSchema,
   CompleteTaskSchema,
   FailTaskSchema,
   UpdateTaskStatusSchema,
+  ProgressEventSchema,
+  PHASE_TIMEOUTS_MS,
 } from '@tah/shared';
+import type { TaskStatus } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { contributors, issues, projects, tasks } from '../db/schema.js';
+import { contributors, issues, projects, tasks, taskEvents } from '../db/schema.js';
 import {
   getContributorFromToken,
   extractBearerToken,
 } from '../services/auth.js';
 import { findMatchForContributor } from '../services/matching.js';
 
-// Heartbeats: 5 missed = task abandoned
-const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1_000; // 5 min (5 × 60s interval)
 
 export function taskRoutes(db: Db) {
   const app = new Hono();
@@ -51,7 +52,7 @@ export function taskRoutes(db: Db) {
       issueId: issue.id,
       contributorId: contributor.id,
       status: 'dispatched',
-      lastHeartbeatAt: now,
+      phaseStartedAt: now,
     });
 
     await db
@@ -107,7 +108,7 @@ export function taskRoutes(db: Db) {
             issueId: match.issueId,
             contributorId: contributor.id,
             status: 'dispatched',
-            lastHeartbeatAt: now,
+            phaseStartedAt: now,
           }).run();
 
           tx.update(issues)
@@ -173,10 +174,45 @@ export function taskRoutes(db: Db) {
     const now = new Date().toISOString();
     await db
       .update(tasks)
-      .set({ lastHeartbeatAt: now, updatedAt: now })
+      .set({ phaseStartedAt: now, updatedAt: now })
       .where(eq(tasks.id, task.id));
 
     return c.json({ ok: true, cancel: false });
+  });
+
+  // Progress event (replaces heartbeat — records phase transition and resets phase clock)
+  app.post('/:id/progress', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const task = await db.select().from(tasks).where(eq(tasks.id, c.req.param('id'))).get();
+    if (!task) return c.json({ error: 'Not found' }, 404);
+    if (task.contributorId !== contributor.id) return c.json({ error: 'Forbidden' }, 403);
+
+    const body = await c.req.json();
+    const parsed = ProgressEventSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    const now = new Date().toISOString();
+    const eventId = randomBytes(8).toString('hex');
+
+    await db.insert(taskEvents).values({
+      id: eventId,
+      taskId: task.id,
+      phase: parsed.data.phase,
+      tokensUsed: parsed.data.tokensUsed ?? null,
+      elapsedMs: parsed.data.elapsedMs ?? null,
+    });
+
+    await db.update(tasks).set({
+      status: parsed.data.phase as TaskStatus,
+      phaseStartedAt: now,
+      updatedAt: now,
+    }).where(eq(tasks.id, task.id));
+
+    return c.json({ ok: true });
   });
 
   // Update task status (daemon reports progress)
@@ -284,37 +320,36 @@ export function taskRoutes(db: Db) {
 
 // Sweep for timed-out tasks (call on a timer)
 export async function abandonStaleTasks(db: Db): Promise<number> {
-  const allActive = await db
+  const activeStatuses: TaskStatus[] = ['dispatched', 'cloning', 'working', 'review', 'submitting'];
+
+  const activeTasks = await db
     .select()
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.status, 'working'),
-      ),
-    )
+    .where(inArray(tasks.status, activeStatuses))
     .all();
 
   const now = Date.now();
   let abandoned = 0;
 
-  for (const task of allActive) {
-    if (!task.lastHeartbeatAt) continue;
-    const elapsed = now - new Date(task.lastHeartbeatAt).getTime();
-    if (elapsed > HEARTBEAT_TIMEOUT_MS) {
-      const timestamp = new Date().toISOString();
-      await db.update(tasks).set({
-        status: 'failed',
-        errorDetails: 'Heartbeat timeout - daemon may have crashed',
-        updatedAt: timestamp,
-      }).where(eq(tasks.id, task.id));
+  for (const task of activeTasks) {
+    const timeout = PHASE_TIMEOUTS_MS[task.status as TaskStatus];
+    if (!timeout || !task.phaseStartedAt) continue;
+    const elapsed = now - new Date(task.phaseStartedAt).getTime();
+    if (elapsed <= timeout) continue;
 
-      await db
-        .update(issues)
-        .set({ status: 'available', updatedAt: timestamp })
-        .where(eq(issues.id, task.issueId));
+    const timestamp = new Date().toISOString();
+    await db.update(tasks).set({
+      status: 'failed',
+      errorDetails: `Phase '${task.status}' timed out after ${Math.round(elapsed / 60000)}m`,
+      updatedAt: timestamp,
+    }).where(eq(tasks.id, task.id));
 
-      abandoned++;
-    }
+    await db
+      .update(issues)
+      .set({ status: 'available', updatedAt: timestamp })
+      .where(eq(issues.id, task.issueId));
+
+    abandoned++;
   }
 
   return abandoned;

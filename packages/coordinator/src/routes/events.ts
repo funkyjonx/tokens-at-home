@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, or } from 'drizzle-orm';
 import type { ActivityEvent } from '@tah/shared';
 import type { Db } from '../db/index.js';
-import { contributors, issues, pledges, projects, tasks } from '../db/schema.js';
+import { contributors, issues, projects, tasks } from '../db/schema.js';
 
 export function eventRoutes(db: Db) {
   const app = new Hono();
@@ -29,31 +29,6 @@ export function eventRoutes(db: Db) {
         type: 'contributor_joined',
         ts: contrib.createdAt,
         actor: contrib.githubUsername,
-      });
-    }
-
-    // Pledges (joined with contributor and project names)
-    const allPledges = await db
-      .select({
-        createdAt: pledges.createdAt,
-        maxTasks: pledges.maxTasks,
-        maxComplexity: pledges.maxComplexity,
-        contributorUsername: contributors.githubUsername,
-        githubOwner: projects.githubOwner,
-        githubRepo: projects.githubRepo,
-      })
-      .from(pledges)
-      .innerJoin(contributors, eq(pledges.contributorId, contributors.id))
-      .innerJoin(projects, eq(pledges.projectId, projects.id))
-      .all();
-    for (const pl of allPledges) {
-      events.push({
-        type: 'pledge_created',
-        ts: pl.createdAt,
-        actor: pl.contributorUsername,
-        project: `${pl.githubOwner}/${pl.githubRepo}`,
-        maxTasks: pl.maxTasks,
-        maxComplexity: pl.maxComplexity,
       });
     }
 

@@ -8,7 +8,7 @@ import { projectRoutes } from './projects.js';
 import { contributorRoutes } from './contributors.js';
 import { taskRoutes } from './tasks.js';
 import { leaderboardRoutes } from './leaderboard.js';
-import type { Project, Contributor, Task, Issue, WatchlistEntry, GenericPledge, LeaderboardEntry, PublicContributor, ProjectStats } from '@tah/shared';
+import type { Project, Contributor, Task, Issue, LeaderboardEntry, PublicContributor, ProjectStats } from '@tah/shared';
 
 // Create an in-memory database for tests
 function createTestDb() {
@@ -34,21 +34,10 @@ function createTestDb() {
       id TEXT PRIMARY KEY,
       github_username TEXT NOT NULL UNIQUE,
       languages TEXT NOT NULL DEFAULT '[]',
-      autonomy TEXT NOT NULL DEFAULT 'review_before_pr',
-      cycle_reset_date TEXT,
+      max_complexity TEXT NOT NULL DEFAULT 'medium',
       max_concurrent INTEGER NOT NULL DEFAULT 1,
       trust_score REAL NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS pledges (
-      id TEXT PRIMARY KEY,
-      contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      project_id TEXT NOT NULL REFERENCES projects(id),
-      max_tasks INTEGER NOT NULL,
-      max_complexity TEXT NOT NULL DEFAULT 'large',
-      budget_percent INTEGER NOT NULL DEFAULT 100,
-      active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS issues (
@@ -68,15 +57,22 @@ function createTestDb() {
       id TEXT PRIMARY KEY,
       issue_id TEXT NOT NULL REFERENCES issues(id),
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      pledge_id TEXT,
       status TEXT NOT NULL DEFAULT 'dispatched',
+      phase_started_at TEXT,
       tokens_used INTEGER,
       pr_url TEXT,
       summary TEXT,
       error_details TEXT,
-      last_heartbeat_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS task_events (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id),
+      phase TEXT NOT NULL,
+      tokens_used INTEGER,
+      elapsed_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS auth_tokens (
       id TEXT PRIMARY KEY,
@@ -85,20 +81,12 @@ function createTestDb() {
       expires_at TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS watchlist (
+    CREATE TABLE IF NOT EXISTS project_pins (
       id TEXT PRIMARY KEY,
       contributor_id TEXT NOT NULL REFERENCES contributors(id),
       project_id TEXT NOT NULL REFERENCES projects(id),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(contributor_id, project_id)
-    );
-    CREATE TABLE IF NOT EXISTS generic_pledges (
-      id TEXT PRIMARY KEY,
-      contributor_id TEXT NOT NULL REFERENCES contributors(id),
-      max_tasks INTEGER NOT NULL,
-      max_complexity TEXT NOT NULL DEFAULT 'large',
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
   return db;
@@ -480,7 +468,7 @@ describe('Coordinator API', () => {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(res.status).toBe(200);
-      const entries = await res.json() as (WatchlistEntry & { githubOwner: string; githubRepo: string })[];
+      const entries = await res.json() as { id: string; githubOwner: string; githubRepo: string }[];
       expect(entries.length).toBe(1);
       expect(entries[0]?.githubOwner).toBe('watch');
       expect(entries[0]?.githubRepo).toBe('me');
@@ -501,7 +489,7 @@ describe('Coordinator API', () => {
       const listRes = await app.request('/contributors/me/watchlist', {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      const entries = await listRes.json() as WatchlistEntry[];
+      const entries = await listRes.json() as { id: string }[];
       expect(entries.length).toBe(0);
     });
 
@@ -522,7 +510,7 @@ describe('Coordinator API', () => {
         body: JSON.stringify({ maxTasks: 5, maxComplexity: 'medium' }),
       });
       expect(res.status).toBe(201);
-      const pledge = await res.json() as GenericPledge;
+      const pledge = await res.json() as { maxTasks: number; maxComplexity: string; active: boolean };
       expect(pledge.maxTasks).toBe(5);
       expect(pledge.maxComplexity).toBe('medium');
       expect(pledge.active).toBe(true);
@@ -538,9 +526,9 @@ describe('Coordinator API', () => {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(res.status).toBe(200);
-      const pledges = await res.json() as GenericPledge[];
-      expect(pledges.length).toBe(1);
-      expect(pledges[0]?.maxTasks).toBe(3);
+      // Generic pledges are now stubs — list always returns empty
+      const pledges = await res.json() as { maxTasks: number }[];
+      expect(Array.isArray(pledges)).toBe(true);
     });
 
     it('deactivates a generic pledge', async () => {
@@ -549,19 +537,13 @@ describe('Coordinator API', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ maxTasks: 2 }),
       });
-      const pledge = await createRes.json() as GenericPledge;
+      const pledge = await createRes.json() as { id: string };
 
       const delRes = await app.request(`/contributors/me/generic-pledges/${pledge.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${authToken}` },
       });
       expect(delRes.status).toBe(200);
-
-      const listRes = await app.request('/contributors/me/generic-pledges', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      const pledges = await listRes.json() as GenericPledge[];
-      expect(pledges[0]?.active).toBe(false);
     });
   });
 
