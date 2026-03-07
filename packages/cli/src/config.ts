@@ -12,7 +12,6 @@ export interface CliConfig {
   pollIntervalMs?: number;
   workDir?: string;
   logDir?: string;
-  autonomy?: 'full' | 'review_before_pr';
   githubUsername?: string;
 }
 
@@ -32,7 +31,7 @@ export function saveConfig(config: CliConfig): void {
 
 export function requireAuth(config: CliConfig): asserts config is CliConfig & { authToken: string; contributorId: string } {
   if (!config.authToken || !config.contributorId) {
-    console.error('Not authenticated. Run `tah contributor register` first.');
+    console.error('Not registered. Run `tah start` to get started.');
     process.exit(1);
   }
 }

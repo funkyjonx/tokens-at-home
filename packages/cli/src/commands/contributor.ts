@@ -32,12 +32,10 @@ export function contributorCommand(): Command {
     .option('--coordinator <url>', 'Coordinator URL')
     .option('--username <u>', 'GitHub username')
     .option('--languages <l>', 'Comma-separated languages', 'typescript')
-    .option('--autonomy <a>', 'full | review_before_pr', 'review_before_pr')
     .action(async (opts: {
       coordinator: string;
       username?: string;
       languages: string;
-      autonomy: string;
     }) => {
       let username = opts.username;
       if (!username) {
@@ -65,7 +63,6 @@ export function contributorCommand(): Command {
       const result = await api.post<{ contributor: Contributor; token: string }>('/contributors', {
         githubUsername: username,
         languages: opts.languages.split(',').map((l) => l.trim()),
-        autonomy: opts.autonomy,
         maxConcurrent: 1,
       });
 
@@ -74,18 +71,11 @@ export function contributorCommand(): Command {
         coordinatorUrl: coordinatorUrl,
         contributorId: result.contributor.id,
         authToken: result.token,
-        // Use the coordinator's authoritative autonomy value (new contributors are
-        // locked to review_before_pr regardless of what was requested)
-        autonomy: result.contributor.autonomy as 'full' | 'review_before_pr',
         githubUsername: result.contributor.githubUsername,
       });
 
       console.log(`Registered as contributor: ${result.contributor.githubUsername}`);
       console.log(`ID: ${result.contributor.id}`);
-      console.log(`Autonomy: ${result.contributor.autonomy}`);
-      if (opts.autonomy === 'full' && result.contributor.autonomy !== 'full') {
-        console.log(`Note: new contributors start with review_before_pr. You'll be shown a diff and asked to approve before any PR is submitted. Full autonomy is unlocked after you've had PRs merged.`);
-      }
       console.log(`Auth token saved to ~/.tokens-at-home/config.json`);
       console.log('\nRun `tah worker start` to begin contributing.');
     });
@@ -108,7 +98,6 @@ export function contributorCommand(): Command {
       console.log(`GitHub: ${contributor.githubUsername}`);
       console.log(`ID: ${contributor.id}`);
       console.log(`Languages: ${contributor.languages.join(', ')}`);
-      console.log(`Autonomy: ${contributor.autonomy}`);
       console.log(`Trust score: ${contributor.trustScore}`);
       console.log(`Available: ${contributor.available}`);
       console.log(`Max concurrent: ${contributor.maxConcurrent}`);
