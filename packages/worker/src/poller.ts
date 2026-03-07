@@ -1,4 +1,4 @@
-import type { WorkerConfig, TaskAssignment, Pledge, GenericPledge } from '@tah/shared';
+import type { WorkerConfig, TaskAssignment, ContributorStats } from '@tah/shared';
 
 export class CoordinatorClient {
   constructor(private readonly config: WorkerConfig) {}
@@ -21,22 +21,13 @@ export class CoordinatorClient {
     return res.json() as Promise<TaskAssignment>;
   }
 
-  async sendHeartbeat(taskId: string): Promise<{ ok: boolean; cancel: boolean }> {
-    const res = await fetch(this.url(`/tasks/${taskId}/heartbeat`), {
+  async sendProgress(taskId: string, phase: string, tokensUsed?: number, elapsedMs?: number): Promise<void> {
+    const res = await fetch(this.url(`/tasks/${taskId}/progress`), {
       method: 'POST',
       headers: this.headers,
+      body: JSON.stringify({ phase, tokensUsed, elapsedMs }),
     });
-    if (!res.ok) throw new Error(`Heartbeat failed: ${res.status}`);
-    return res.json() as Promise<{ ok: boolean; cancel: boolean }>;
-  }
-
-  async updateStatus(taskId: string, status: string): Promise<void> {
-    const res = await fetch(this.url(`/tasks/${taskId}/status`), {
-      method: 'PUT',
-      headers: this.headers,
-      body: JSON.stringify({ status }),
-    });
-    if (!res.ok) throw new Error(`Status update failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Progress update failed: ${res.status}`);
   }
 
   async completeTask(
@@ -62,18 +53,6 @@ export class CoordinatorClient {
     if (!res.ok) throw new Error(`Fail task failed: ${res.status}`);
   }
 
-  async getPledges(): Promise<Pledge[]> {
-    const res = await fetch(this.url('/contributors/me/pledges'), { headers: this.headers });
-    if (!res.ok) throw new Error(`Get pledges failed: ${res.status}`);
-    return res.json() as Promise<Pledge[]>;
-  }
-
-  async getGenericPledges(): Promise<GenericPledge[]> {
-    const res = await fetch(this.url('/contributors/me/generic-pledges'), { headers: this.headers });
-    if (!res.ok) throw new Error(`Get generic pledges failed: ${res.status}`);
-    return res.json() as Promise<GenericPledge[]>;
-  }
-
   async setAvailable(available: boolean): Promise<void> {
     const res = await fetch(this.url('/contributors/me/available'), {
       method: 'PUT',
@@ -81,5 +60,28 @@ export class CoordinatorClient {
       body: JSON.stringify({ available }),
     });
     if (!res.ok) throw new Error(`Set available failed: ${res.status}`);
+  }
+
+  async getPins(): Promise<Array<{ projectId: string; githubOwner: string; githubRepo: string }>> {
+    const res = await fetch(this.url('/contributors/me/pins'), { headers: this.headers });
+    if (!res.ok) throw new Error(`Get pins failed: ${res.status}`);
+    return res.json() as Promise<Array<{ projectId: string; githubOwner: string; githubRepo: string }>>;
+  }
+
+  async addPin(projectId: string): Promise<void> {
+    const res = await fetch(this.url('/contributors/me/pins'), {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify({ projectId }),
+    });
+    if (!res.ok) throw new Error(`Add pin failed: ${res.status}`);
+  }
+
+  async removePin(projectId: string): Promise<void> {
+    const res = await fetch(this.url(`/contributors/me/pins/${projectId}`), {
+      method: 'DELETE',
+      headers: this.headers,
+    });
+    if (!res.ok) throw new Error(`Remove pin failed: ${res.status}`);
   }
 }
