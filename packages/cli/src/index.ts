@@ -31,7 +31,7 @@ program.addCommand(statsCommand());
 function handleError(err: unknown): never {
   if (err instanceof TahApiError) {
     if (err.status === 401) {
-      console.error('Authentication failed. Re-run `tah contributor register`.');
+      console.error('Authentication failed. Re-run `tah start`.');
     } else if (err.status === 404) {
       console.error('Resource not found. Check the ID and try again.');
     } else {

@@ -122,7 +122,6 @@ export function startCommand(): Command {
           githubUsername: result.contributor.githubUsername,
         });
       } catch (err) {
-        rl.close();
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('(409)')) {
           console.error(`\n  Username "${username}" is already registered.\n  If this is you, your config may be missing. Contact support to recover your token.`);

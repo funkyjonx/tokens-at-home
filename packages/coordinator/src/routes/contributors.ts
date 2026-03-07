@@ -113,7 +113,6 @@ export function contributorRoutes(db: Db) {
       id: c.id,
       githubUsername: c.githubUsername,
       languages: JSON.parse(c.languages) as string[],
-      trustScore: c.trustScore,
       tasksCompleted: statsMap.get(c.id)?.count ?? 0,
       totalTokensDonated: statsMap.get(c.id)?.tokens ?? 0,
       memberSince: c.createdAt,

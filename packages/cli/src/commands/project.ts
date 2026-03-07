@@ -306,7 +306,7 @@ export function projectCommand(): Command {
 
       if (opts.all) {
         if (!config.githubUsername) {
-          console.error('GitHub username not found in config. Run `tah contributor register` first.');
+          console.error('GitHub username not found in config. Run `tah start` first.');
           process.exit(1);
         }
         const allProjects = await api.get<Project[]>('/projects');
