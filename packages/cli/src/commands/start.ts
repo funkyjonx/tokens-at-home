@@ -85,20 +85,34 @@ export function startCommand(): Command {
       rl.close();
 
       const api = new TahApiClient(coordinatorUrl);
-      const result = await api.post<{ contributor: Contributor; token: string }>('/contributors', {
-        githubUsername: username,
-        languages,
-        maxConcurrent,
-        maxComplexity,
-      });
+      let result: { contributor: Contributor; token: string };
+      try {
+        result = await api.post<{ contributor: Contributor; token: string }>('/contributors', {
+          githubUsername: username,
+          languages,
+          maxConcurrent,
+          maxComplexity,
+        });
 
-      saveConfig({
-        ...config,
-        coordinatorUrl,
-        contributorId: result.contributor.id,
-        authToken: result.token,
-        githubUsername: result.contributor.githubUsername,
-      });
+        saveConfig({
+          ...config,
+          coordinatorUrl,
+          contributorId: result.contributor.id,
+          authToken: result.token,
+          githubUsername: result.contributor.githubUsername,
+        });
+      } catch (err) {
+        rl.close();
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('(409)')) {
+          console.error(`\n  Username "${username}" is already registered.\n  If this is you, your config may be missing. Contact support to recover your token.`);
+        } else if (msg.includes('(400)')) {
+          console.error(`\n  Registration failed: ${msg}`);
+        } else {
+          console.error(`\n  Could not reach coordinator: ${msg}\n  Check your internet connection or try again.`);
+        }
+        process.exit(1);
+      }
 
       console.log(`\n  Registered as @${username}. Starting worker...`);
       console.log('  Watching for tasks — contributing to any matching open source project.');
