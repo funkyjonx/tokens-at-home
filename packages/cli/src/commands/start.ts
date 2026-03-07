@@ -41,14 +41,34 @@ export function startCommand(): Command {
       const config = loadConfig();
       const coordinatorUrl = opts.coordinator ?? config.coordinatorUrl;
 
-      // If already registered, just start
+      // If already registered, verify token then start
       if (config.authToken && config.contributorId) {
-        console.log('Config found. Starting worker...');
-        const workerBin = findWorkerBin();
-        const child = spawn(process.execPath, [workerBin], { stdio: 'inherit', env: { ...process.env } });
-        await new Promise<void>((resolve) => child.on('exit', () => resolve()));
-        process.exit(child.exitCode ?? 1);
-        return;
+        // Verify token is still valid before launching worker
+        const api = new TahApiClient(coordinatorUrl, config.authToken);
+        try {
+          await api.get('/contributors/me');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('(401)')) {
+            console.log('\n  Your session has expired. Let\'s re-register.\n');
+            saveConfig({ ...config, authToken: undefined, contributorId: undefined, githubUsername: undefined });
+            // Fall through to registration flow below
+          } else {
+            console.error(`  Could not reach coordinator: ${msg}`);
+            process.exit(1);
+          }
+        }
+        // Re-read config to check if token is still valid (not cleared by 401 path)
+        const freshConfig = loadConfig();
+        if (freshConfig.authToken && freshConfig.contributorId) {
+          console.log('Config found. Starting worker...');
+          const workerBin = findWorkerBin();
+          const child = spawn(process.execPath, [workerBin], { stdio: 'inherit', env: { ...process.env } });
+          await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+          process.exit(child.exitCode ?? 1);
+          return;
+        }
+        // Token was cleared — fall through to registration flow
       }
 
       console.log('\n  Tokens at Home — donate your Claude capacity to open source\n');
