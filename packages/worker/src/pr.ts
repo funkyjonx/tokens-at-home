@@ -96,6 +96,8 @@ export async function createPr(
   }
 
   // Create PR against the upstream repo
+  const profileUrl = `https://tokens-at-home.fly.dev/ui/contributors/${contributorUsername}`;
+
   const prBody = [
     `Closes #${issue.githubNumber}`,
     '',
@@ -103,8 +105,7 @@ export async function createPr(
     summary,
     '',
     '---',
-    '_This PR was created autonomously by [Tokens at Home](https://github.com/funkyjonx/tokens-at-home)._',
-    '_A human contributor reviewed the changes before submission._',
+    `Contributed by [@${contributorUsername}](${profileUrl}) via [Tokens at Home](https://tokens-at-home.fly.dev)`,
   ].join('\n');
 
   const ghResult = spawnSync(
