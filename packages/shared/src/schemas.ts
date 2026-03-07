@@ -43,6 +43,13 @@ export const RegisterContributorSchema = z.object({
 });
 export type RegisterContributorInput = z.infer<typeof RegisterContributorSchema>;
 
+export const UpdateContributorSchema = z.object({
+  languages: languageList.optional(),
+  maxConcurrent: z.number().int().min(1).max(5).optional(),
+  maxComplexity: IssueComplexitySchema.optional(),
+});
+export type UpdateContributorInput = z.infer<typeof UpdateContributorSchema>;
+
 export const SetAvailableSchema = z.object({
   available: z.boolean(),
 });

@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { createInterface } from 'readline';
 import { loadConfig, requireAuth } from '../config.js';
 import { TahApiClient } from '../api.js';
 import type { Contributor, PublicContributor } from '@tah/shared';
@@ -48,6 +49,57 @@ export function contributorCommand(): Command {
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
       await api.put('/contributors/me/available', { available: false });
       console.log('You are now marked as unavailable.');
+    });
+
+  cmd
+    .command('update')
+    .description('Update your contributor profile (languages, concurrency, complexity)')
+    .action(async () => {
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+
+      const current = await api.get<Contributor>('/contributors/me');
+      console.log(`\n  Current profile for @${current.githubUsername}:`);
+      console.log(`  Languages:   ${current.languages.join(', ')}`);
+      console.log(`  Concurrent:  ${current.maxConcurrent}`);
+      console.log(`  Complexity:  ${current.maxComplexity}`);
+      console.log('');
+
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const p = (q: string) => new Promise<string>((resolve) => rl.question(q, (a) => resolve(a.trim())));
+
+      const langsRaw = await p(`  Languages [${current.languages.join(',')}]: `);
+      const languages = langsRaw
+        ? langsRaw.split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
+        : undefined;
+
+      const concurrentRaw = await p(`  Max concurrent [${current.maxConcurrent}]: `);
+      const maxConcurrent = concurrentRaw ? (parseInt(concurrentRaw, 10) || undefined) : undefined;
+
+      const validComplexities = ['trivial', 'small', 'medium', 'large'];
+      let maxComplexity: string | undefined;
+      while (true) {
+        const raw = await p(`  Max complexity [${current.maxComplexity}]: `);
+        if (!raw) break;
+        if (validComplexities.includes(raw)) { maxComplexity = raw; break; }
+        console.log('  Invalid. Choose: trivial, small, medium, large');
+      }
+
+      rl.close();
+
+      const updates: Record<string, unknown> = {};
+      if (languages) updates['languages'] = languages;
+      if (maxConcurrent) updates['maxConcurrent'] = maxConcurrent;
+      if (maxComplexity) updates['maxComplexity'] = maxComplexity;
+
+      if (Object.keys(updates).length === 0) {
+        console.log('\n  No changes made.');
+        return;
+      }
+
+      await api.patch('/contributors/me', updates);
+      console.log('\n  Profile updated.');
     });
 
   cmd

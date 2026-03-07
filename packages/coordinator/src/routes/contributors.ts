@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import {
   RegisterContributorSchema,
   SetAvailableSchema,
+  UpdateContributorSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
 import { contributors, projects, tasks, issues, authTokens, projectPins } from '../db/schema.js';
@@ -166,6 +167,29 @@ export function contributorRoutes(db: Db) {
     const contributor = await getContributorFromToken(db, token);
     if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
     return c.json(deserializeContributor(contributor));
+  });
+
+  // PATCH /me — update mutable profile fields
+  app.patch('/me', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const body = await c.req.json();
+    const parsed = UpdateContributorSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    const updates: Record<string, unknown> = {};
+    if (parsed.data.languages !== undefined) updates['languages'] = JSON.stringify(parsed.data.languages);
+    if (parsed.data.maxConcurrent !== undefined) updates['maxConcurrent'] = parsed.data.maxConcurrent;
+    if (parsed.data.maxComplexity !== undefined) updates['maxComplexity'] = parsed.data.maxComplexity;
+
+    if (Object.keys(updates).length === 0) return c.json(deserializeContributor(contributor));
+
+    await db.update(contributors).set(updates).where(eq(contributors.id, contributor.id));
+    const updated = await db.select().from(contributors).where(eq(contributors.id, contributor.id)).get();
+    return c.json(deserializeContributor(updated!));
   });
 
   // Set availability (requires auth)

@@ -177,6 +177,57 @@ describe('Coordinator API', () => {
     });
   });
 
+  describe('PATCH /contributors/me', () => {
+    it('updates languages', async () => {
+      const res = await app.request('/contributors/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ languages: ['python', 'rust'] }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { githubUsername: string; languages: string[] };
+      expect(body.languages).toEqual(['python', 'rust']);
+    });
+
+    it('updates maxComplexity', async () => {
+      const res = await app.request('/contributors/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ maxComplexity: 'large' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { maxComplexity: string };
+      expect(body.maxComplexity).toBe('large');
+    });
+
+    it('rejects invalid data', async () => {
+      const res = await app.request('/contributors/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ maxConcurrent: 99 }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 401 without token', async () => {
+      const res = await app.request('/contributors/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ languages: ['go'] }),
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('POST /projects', () => {
     it('creates a project with valid auth', async () => {
       const res = await app.request('/projects', {
