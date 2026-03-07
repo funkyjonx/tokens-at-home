@@ -40,6 +40,7 @@ export async function executeTask(
   project: Project,
   workBaseDir?: string,
   logBaseDir?: string,
+  onPhase?: (phase: string) => void,
 ): Promise<ExecutionResult> {
   const sandbox = buildSandboxConfig(task.id, issue.taskType, workBaseDir, logBaseDir);
 
@@ -52,6 +53,7 @@ export async function executeTask(
   log(sandbox.logFile, `Issue: ${project.githubOwner}/${project.githubRepo}#${issue.githubNumber}`);
 
   // Clone the repo
+  onPhase?.('cloning');
   const repoUrl = `https://github.com/${project.githubOwner}/${project.githubRepo}.git`;
   log(sandbox.logFile, `Cloning ${repoUrl}`);
 
@@ -88,6 +90,7 @@ export async function executeTask(
   log(sandbox.logFile, `Prompt written (${prompt.length} chars)`);
 
   // Invoke claude -p with direct args (no shell interpolation)
+  onPhase?.('working');
   const allowedTools = formatAllowedTools(sandbox.allowedTools);
   const promptContent = readFileSync(promptFile, 'utf-8');
 
@@ -153,7 +156,9 @@ async function runClaude(
     proc.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
 
     const timeout = setTimeout(() => {
-      proc.kill();
+      proc.kill('SIGTERM');
+      // Give Claude 5 seconds to clean up, then force-kill
+      setTimeout(() => proc.kill('SIGKILL'), 5_000);
       reject(new Error('Claude timed out after 40 minutes'));
     }, 40 * 60 * 1000);
 

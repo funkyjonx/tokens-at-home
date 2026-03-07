@@ -11,21 +11,6 @@ import { loadConfig } from './config.js';
 const POLL_INTERVAL_MS = 30_000;
 const PROGRESS_INTERVAL_MS = 60_000;
 
-let running = true;
-let currentProgressTimer: ReturnType<typeof setInterval> | null = null;
-
-process.on('SIGINT', () => {
-  console.log('\n[worker] Shutting down...');
-  running = false;
-  if (currentProgressTimer) clearInterval(currentProgressTimer);
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  running = false;
-  if (currentProgressTimer) clearInterval(currentProgressTimer);
-});
-
 function preflight(): void {
   try {
     execFileSync('claude', ['--version'], { timeout: 5_000, stdio: 'ignore' });
@@ -45,7 +30,7 @@ function preflight(): void {
 export async function startWorker(configPath?: string) {
   preflight();
 
-  const config = await loadConfig(configPath);
+  const config = loadConfig(configPath);
 
   const workDir = config.workDir ?? DEFAULT_WORK_DIR;
   const logDir = config.logDir ?? DEFAULT_LOG_DIR;
@@ -53,6 +38,26 @@ export async function startWorker(configPath?: string) {
   mkdirSync(logDir, { recursive: true });
 
   const client = new CoordinatorClient(config);
+
+  let running = true;
+  let currentProgressTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Register signal handlers inside startWorker so client is in scope
+  const shutdown = async (signal: string) => {
+    console.log(`\n[worker] ${signal} received, shutting down...`);
+    running = false;
+    if (currentProgressTimer) {
+      clearInterval(currentProgressTimer);
+      currentProgressTimer = null;
+    }
+    try {
+      await client.setAvailable(false);
+    } catch { /* best effort */ }
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
   console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
@@ -77,7 +82,7 @@ export async function startWorker(configPath?: string) {
       const { task, issue, project } = assignment;
       console.log(`[worker] Task received: ${task.id} (${project.githubOwner}/${project.githubRepo}#${issue.githubNumber})`);
 
-      let currentPhase = 'working';
+      let currentPhase = 'cloning';
       let currentTokens = 0;
       const taskStartMs = Date.now();
 
@@ -92,12 +97,15 @@ export async function startWorker(configPath?: string) {
       let result: ExecutionResult | undefined;
       try {
         console.log(`[1/4] Cloning...`);
-        currentPhase = 'cloning';
         await client.sendProgress(task.id, 'cloning');
 
-        result = await executeTask(task, issue, project, workDir, logDir);
-
-        console.log(`      done (${Math.round((Date.now() - taskStartMs) / 1000)}s)`);
+        result = await executeTask(task, issue, project, workDir, logDir, (phase) => {
+          currentPhase = phase;
+          if (phase === 'working') {
+            console.log(`      clone done (${Math.round((Date.now() - taskStartMs) / 1000)}s)`);
+            console.log(`[2/4] Running Claude...`);
+          }
+        });
 
         if (!result.success || !result.claudeOutput || !result.repoPath) {
           throw new Error(result.error ?? 'Execution failed');
@@ -105,22 +113,14 @@ export async function startWorker(configPath?: string) {
 
         currentTokens = result.claudeOutput.tokensUsed;
 
-        // Human review if required
-        const needsReview = true; // always review before PR
-
-        let approved = true;
-        if (needsReview) {
-          console.log(`[3/4] Human review...`);
-          currentPhase = 'review';
-          await client.sendProgress(task.id, 'review', currentTokens, Date.now() - taskStartMs);
-          const decision = await humanReview(result.repoPath, issue, project);
-          approved = decision.approved;
-          if (!approved) {
-            throw new Error(decision.reason ?? 'Rejected during review');
-          }
+        console.log(`[3/4] Human review...`);
+        currentPhase = 'review';
+        await client.sendProgress(task.id, 'review', currentTokens, Date.now() - taskStartMs);
+        const decision = await humanReview(result.repoPath, issue, project);
+        if (!decision.approved) {
+          throw new Error(decision.reason ?? 'Rejected during review');
         }
 
-        // Submit PR
         console.log(`[4/4] Submitting PR...`);
         currentPhase = 'submitting';
         await client.sendProgress(task.id, 'submitting', currentTokens, Date.now() - taskStartMs);
@@ -133,7 +133,6 @@ export async function startWorker(configPath?: string) {
           config.githubUsername ?? '',
         );
 
-        // Report completion
         await client.completeTask(
           task.id,
           pr.prUrl,
@@ -146,13 +145,16 @@ export async function startWorker(configPath?: string) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[worker] Task ${task.id} failed: ${msg}`);
-        await client.failTask(task.id, msg, currentTokens || undefined);
+        try {
+          await client.failTask(task.id, msg, currentTokens || undefined);
+        } catch (failErr) {
+          console.error('[worker] Could not report task failure to coordinator:', failErr);
+        }
       } finally {
         if (currentProgressTimer) {
           clearInterval(currentProgressTimer);
           currentProgressTimer = null;
         }
-        // Clean up work directory unconditionally
         const taskWorkDir = join(workDir, task.id);
         try {
           rmSync(taskWorkDir, { recursive: true, force: true });
