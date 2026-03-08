@@ -97,7 +97,7 @@ export async function executeTask(
   log(sandbox.logFile, `Invoking Claude...`);
 
   const { rawOutput, exitCode, stderr } = await runClaude(
-    ['--output-format', 'stream-json', '--allowedTools', allowedTools, '-p', promptContent],
+    ['--output-format', 'stream-json', '--verbose', '--allowedTools', allowedTools, '-p', promptContent],
     repoPath,
     sandbox.logFile,
   );

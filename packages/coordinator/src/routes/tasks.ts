@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import {
   AssignTaskSchema,
@@ -306,12 +306,21 @@ export function taskRoutes(db: Db) {
       updatedAt: now,
     }).where(eq(tasks.id, task.id));
 
+    // Count total failed tasks for this issue. Cancel after 3 failures to prevent retry storms.
+    const MAX_FAILURES = 3;
+    const { failCount } = await db
+      .select({ failCount: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(eq(tasks.issueId, task.issueId), eq(tasks.status, 'failed')))
+      .get() ?? { failCount: 0 };
+
+    const nextIssueStatus = failCount >= MAX_FAILURES ? 'cancelled' : 'available';
     await db
       .update(issues)
-      .set({ status: 'available', updatedAt: now })
+      .set({ status: nextIssueStatus, updatedAt: now })
       .where(eq(issues.id, task.issueId));
 
-    return c.json({ ok: true });
+    return c.json({ ok: true, cancelled: nextIssueStatus === 'cancelled' });
   });
 
   // List all tasks (requires auth, paginated)
