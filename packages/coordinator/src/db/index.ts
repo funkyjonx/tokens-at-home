@@ -108,6 +108,7 @@ export function initSchema() {
     "ALTER TABLE projects ADD COLUMN task_types TEXT NOT NULL DEFAULT '[\"code\"]'",
     "ALTER TABLE projects ADD COLUMN trust_threshold REAL NOT NULL DEFAULT 0",
     "ALTER TABLE projects ADD COLUMN claude_md TEXT",
+    "ALTER TABLE projects ADD COLUMN github_installation_id TEXT",
   ];
   for (const stmt of addColumns) {
     try { sqlite.exec(stmt); } catch { /* column already exists */ }

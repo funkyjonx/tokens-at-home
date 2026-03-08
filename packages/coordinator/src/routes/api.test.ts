@@ -28,7 +28,8 @@ function createTestDb() {
       task_types TEXT NOT NULL DEFAULT '["code"]',
       max_concurrent INTEGER NOT NULL DEFAULT 3,
       trust_threshold REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      github_installation_id TEXT
     );
     CREATE TABLE IF NOT EXISTS contributors (
       id TEXT PRIMARY KEY,

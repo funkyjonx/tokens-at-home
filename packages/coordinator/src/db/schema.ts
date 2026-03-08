@@ -13,6 +13,7 @@ export const projects = sqliteTable('projects', {
   maxConcurrent: integer('max_concurrent').notNull().default(3),
   trustThreshold: real('trust_threshold').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  githubInstallationId: text('github_installation_id'),
 });
 
 export const contributors = sqliteTable('contributors', {
