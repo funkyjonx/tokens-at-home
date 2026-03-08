@@ -37,6 +37,9 @@ export function webhookRoutes(db: Db, secret: string) {
       case 'issues':
         await handleIssuesEvent(db, payload);
         return c.json({ ok: true });
+      case 'push':
+        await handlePush(db, payload);
+        return c.json({ ok: true });
       default:
         return c.json({ ok: true, event, note: 'unhandled' });
     }
@@ -145,6 +148,34 @@ async function deactivateProjectIssues(db: Db, projectId: string) {
     .update(issues)
     .set({ status: 'cancelled', updatedAt: now })
     .where(and(eq(issues.projectId, projectId), inArray(issues.status, ['available'])));
+}
+
+async function handlePush(db: Db, payload: Record<string, unknown>) {
+  const repo = payload['repository'] as { name: string; owner: { login: string } };
+  const commits = (payload['commits'] as Array<{ modified?: string[]; added?: string[] }>) ?? [];
+
+  const tahYmlChanged = commits.some(
+    (c) => [...(c.modified ?? []), ...(c.added ?? [])].includes('.tah.yml'),
+  );
+  if (!tahYmlChanged) return;
+
+  const project = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.githubOwner, repo.owner.login), eq(projects.githubRepo, repo.name)))
+    .get();
+  if (!project) return;
+
+  const config = await fetchTahConfig(repo.owner.login, repo.name);
+
+  await db
+    .update(projects)
+    .set({
+      issueLabel: config.label,
+      taskTypes: JSON.stringify(config.taskTypes),
+      maxConcurrent: config.maxConcurrent,
+    })
+    .where(eq(projects.id, project.id));
 }
 
 async function handleIssuesEvent(db: Db, payload: Record<string, unknown>) {

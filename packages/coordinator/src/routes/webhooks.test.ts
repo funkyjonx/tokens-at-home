@@ -264,3 +264,63 @@ describe('installation events', () => {
     expect(issue?.status).toBe('cancelled');
   });
 });
+
+describe('push events', () => {
+  it('returns 200 and does not crash when .tah.yml is changed', async () => {
+    const db = createTestDb();
+    db.insert(schema.projects).values({
+      id: 'proj1', githubOwner: 'acme', githubRepo: 'my-app',
+      registeredBy: 'github-app', languages: '["typescript"]',
+      issueLabel: 'tah', taskTypes: '["code"]', maxConcurrent: 3,
+      trustThreshold: 0, githubInstallationId: '99',
+    }).run();
+
+    const app = makeApp(db);
+    const body = JSON.stringify({
+      ref: 'refs/heads/main',
+      commits: [{ modified: ['.tah.yml'] }],
+      repository: { name: 'my-app', owner: { login: 'acme' } },
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'push',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('does nothing when .tah.yml is not in the push', async () => {
+    const db = createTestDb();
+    db.insert(schema.projects).values({
+      id: 'proj1', githubOwner: 'acme', githubRepo: 'my-app',
+      registeredBy: 'github-app', languages: '["typescript"]',
+      issueLabel: 'tah', taskTypes: '["code"]', maxConcurrent: 3,
+      trustThreshold: 0, githubInstallationId: '99',
+    }).run();
+
+    const app = makeApp(db);
+    const body = JSON.stringify({
+      ref: 'refs/heads/main',
+      commits: [{ modified: ['src/index.ts'] }],
+      repository: { name: 'my-app', owner: { login: 'acme' } },
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'push',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+    expect(res.status).toBe(200);
+  });
+});
