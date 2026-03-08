@@ -4,6 +4,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import type { Db } from '../db/index.js';
 import { projects, issues } from '../db/schema.js';
 import { fetchRepoLanguages, fetchTahConfig } from '../services/github.js';
+import { mapGitHubLabelsToComplexity, COMPLEXITY_TOKEN_ESTIMATES } from '@tah/shared';
 
 export function webhookRoutes(db: Db, secret: string) {
   const app = new Hono();
@@ -176,7 +177,6 @@ async function handleIssuesEvent(db: Db, payload: Record<string, unknown>) {
       .get();
     if (existing) return;
 
-    const { mapGitHubLabelsToComplexity, COMPLEXITY_TOKEN_ESTIMATES } = await import('@tah/shared');
     const labelNames = (ghIssue.labels ?? []).map((l) => l.name);
     const complexity = mapGitHubLabelsToComplexity(labelNames) ?? 'small';
 
