@@ -132,7 +132,7 @@ export function projectCommand(): Command {
   cmd
     .command('register')
     .alias('add')
-    .description('Register a GitHub repository as a project')
+    .description('[deprecated] Register a project manually — use `tah project open` instead')
     .argument('<owner>', 'GitHub owner (user or org)')
     .argument('<repo>', 'GitHub repository name')
     .option('-l, --languages <langs>', 'Comma-separated languages (e.g. typescript,rust)', 'typescript')
@@ -149,6 +149,8 @@ export function projectCommand(): Command {
       claudeMd?: string;
       yes?: boolean;
     }) => {
+      console.warn('[deprecated] `tah project register` is deprecated. Install the GitHub App instead: tah project open');
+
       const config = loadConfig();
       requireAuth(config);
 
@@ -295,11 +297,13 @@ export function projectCommand(): Command {
 
   issueCmd
     .command('sync')
-    .description('Sync all open labeled issues from GitHub into the coordinator')
+    .description('[deprecated] Sync issues manually — use the GitHub App for automatic sync')
     .argument('[project-id]', 'Project ID (omit when using --all)')
     .option('--dry-run', 'Print what would be synced without registering anything')
     .option('--all', 'Sync all projects registered by you')
     .action(async (projectId: string | undefined, opts: { dryRun?: boolean; all?: boolean }) => {
+      console.warn('[deprecated] `tah project issue sync` is deprecated. Issues are now synced automatically via the GitHub App.');
+
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
@@ -330,6 +334,18 @@ export function projectCommand(): Command {
     });
 
   cmd.addCommand(issueCmd);
+
+  cmd
+    .command('open')
+    .description('Open the GitHub App install page in your browser')
+    .action(() => {
+      const url = 'https://github.com/apps/tokens-at-home';
+      const opener =
+        process.platform === 'darwin' ? 'open' :
+        process.platform === 'win32' ? 'start' : 'xdg-open';
+      spawnSync(opener, [url], { stdio: 'inherit' });
+      console.log(`Opening ${url}`);
+    });
 
   cmd
     .command('search')
