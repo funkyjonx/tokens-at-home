@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createHmac } from 'crypto';
 import { Hono } from 'hono';
 import Database from 'better-sqlite3';
@@ -98,6 +98,102 @@ describe('POST /webhooks/github', () => {
       body,
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('issues events', () => {
+  let db: ReturnType<typeof createTestDb>;
+  let app: ReturnType<typeof makeApp>;
+
+  beforeEach(() => {
+    db = createTestDb();
+    app = makeApp(db);
+    db.insert(schema.projects).values({
+      id: 'proj1', githubOwner: 'acme', githubRepo: 'my-app',
+      registeredBy: 'github-app', languages: '["typescript"]',
+      issueLabel: 'tah', taskTypes: '["code"]', maxConcurrent: 3,
+      trustThreshold: 0, githubInstallationId: '99',
+    }).run();
+  });
+
+  it('adds an issue when labeled with project label', async () => {
+    const body = JSON.stringify({
+      action: 'labeled',
+      label: { name: 'tah' },
+      issue: { number: 42, title: 'Fix the bug', body: 'Details here', labels: [{ name: 'tah' }] },
+      repository: { name: 'my-app', owner: { login: 'acme' } },
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'issues',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const issue = db.select().from(schema.issues)
+      .where(eq(schema.issues.githubNumber, 42)).get();
+    expect(issue).toBeDefined();
+    expect(issue?.title).toBe('Fix the bug');
+    expect(issue?.status).toBe('available');
+  });
+
+  it('cancels an issue when closed', async () => {
+    db.insert(schema.issues).values({
+      id: 'iss1', projectId: 'proj1', githubNumber: 42,
+      title: 'Fix the bug', body: '', taskType: 'code',
+      estimatedComplexity: 'small', estimatedTokens: 8000, status: 'available',
+    }).run();
+
+    const body = JSON.stringify({
+      action: 'closed',
+      issue: { number: 42, title: 'Fix the bug', body: '', labels: [{ name: 'tah' }] },
+      repository: { name: 'my-app', owner: { login: 'acme' } },
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'issues',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const issue = db.select().from(schema.issues)
+      .where(eq(schema.issues.githubNumber, 42)).get();
+    expect(issue?.status).toBe('cancelled');
+  });
+
+  it('ignores labeled event when label does not match project label', async () => {
+    const body = JSON.stringify({
+      action: 'labeled',
+      label: { name: 'bug' },
+      issue: { number: 99, title: 'Something', body: '', labels: [{ name: 'bug' }] },
+      repository: { name: 'my-app', owner: { login: 'acme' } },
+    });
+    const sig = sign(body, SECRET);
+
+    await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'issues',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+
+    const allIssues = db.select().from(schema.issues).all();
+    expect(allIssues).toHaveLength(0);
   });
 });
 

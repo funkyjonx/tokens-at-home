@@ -33,6 +33,9 @@ export function webhookRoutes(db: Db, secret: string) {
       case 'installation_repositories':
         await handleInstallationRepositories(db, payload);
         return c.json({ ok: true });
+      case 'issues':
+        await handleIssuesEvent(db, payload);
+        return c.json({ ok: true });
       default:
         return c.json({ ok: true, event, note: 'unhandled' });
     }
@@ -141,4 +144,67 @@ async function deactivateProjectIssues(db: Db, projectId: string) {
     .update(issues)
     .set({ status: 'cancelled', updatedAt: now })
     .where(and(eq(issues.projectId, projectId), inArray(issues.status, ['available'])));
+}
+
+async function handleIssuesEvent(db: Db, payload: Record<string, unknown>) {
+  const action = payload['action'] as string;
+  const repo = payload['repository'] as { name: string; owner: { login: string } };
+  const ghIssue = payload['issue'] as {
+    number: number;
+    title: string;
+    body?: string | null;
+    labels?: Array<{ name: string }>;
+  };
+
+  const project = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.githubOwner, repo.owner.login), eq(projects.githubRepo, repo.name)))
+    .get();
+  if (!project) return;
+
+  const now = new Date().toISOString();
+
+  if (action === 'labeled') {
+    const labelName = (payload['label'] as { name: string }).name;
+    if (labelName !== project.issueLabel) return;
+
+    const existing = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(and(eq(issues.projectId, project.id), eq(issues.githubNumber, ghIssue.number)))
+      .get();
+    if (existing) return;
+
+    const { mapGitHubLabelsToComplexity, COMPLEXITY_TOKEN_ESTIMATES } = await import('@tah/shared');
+    const labelNames = (ghIssue.labels ?? []).map((l) => l.name);
+    const complexity = mapGitHubLabelsToComplexity(labelNames) ?? 'small';
+
+    await db.insert(issues).values({
+      id: randomBytes(8).toString('hex'),
+      projectId: project.id,
+      githubNumber: ghIssue.number,
+      title: ghIssue.title,
+      body: ghIssue.body ?? '',
+      taskType: 'code',
+      estimatedComplexity: complexity,
+      estimatedTokens: COMPLEXITY_TOKEN_ESTIMATES[complexity],
+      status: 'available',
+    });
+
+  } else if (action === 'closed' || action === 'unlabeled') {
+    if (action === 'unlabeled') {
+      const labelName = (payload['label'] as { name: string }).name;
+      if (labelName !== project.issueLabel) return;
+    }
+
+    await db
+      .update(issues)
+      .set({ status: 'cancelled', updatedAt: now })
+      .where(and(
+        eq(issues.projectId, project.id),
+        eq(issues.githubNumber, ghIssue.number),
+        inArray(issues.status, ['available', 'assigned']),
+      ));
+  }
 }
