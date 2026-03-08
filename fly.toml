@@ -36,17 +36,3 @@ primary_region = "ord"
   destination = "/data"
   initial_size = "1gb"
 
-[[services.ports]]
-  port = 80
-  handlers = ["http"]
-  force_https = true
-
-[[services.ports]]
-  port = 443
-  handlers = ["tls", "http"]
-
-[services.http_checks]
-  interval = "15s"
-  timeout = "5s"
-  grace_period = "10s"
-  path = "/health"
