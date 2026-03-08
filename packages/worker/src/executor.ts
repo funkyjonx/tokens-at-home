@@ -83,8 +83,9 @@ export async function executeTask(
     return { success: false, error: 'Could not create working branch' };
   }
 
-  // Build the prompt
-  const prompt = buildPrompt({ issue, project, repoPath });
+  // Build the prompt, injecting an auto-generated repo map if the project has no CLAUDE.md
+  const repoMap = project.claudeMd ? '' : generateRepoMap(repoPath);
+  const prompt = buildPrompt({ issue, project, repoPath, repoMap });
   const promptFile = join(sandbox.taskWorkDir, 'prompt.txt');
   writeFileSync(promptFile, prompt, 'utf-8');
   log(sandbox.logFile, `Prompt written (${prompt.length} chars)`);
@@ -121,6 +122,39 @@ export async function executeTask(
     repoPath,
     taskWorkDir: sandbox.taskWorkDir,
   };
+}
+
+function generateRepoMap(repoPath: string): string {
+  const parts: string[] = [];
+
+  // Source file tree (TS/JS only, excludes generated dirs)
+  const tree = run(
+    `find . -type f \\( -name "*.ts" -o -name "*.js" \\) \
+      -not -path "*/node_modules/*" -not -path "*/.git/*" \
+      -not -path "*/dist/*" -not -path "*/build/*" \
+      | sort | head -80`,
+    repoPath,
+  );
+  if (tree.status === 0) {
+    parts.push(`## Source files\n\`\`\`\n${tree.stdout.toString().trim()}\n\`\`\``);
+  }
+
+  // package.json scripts (tells Claude how to build/test)
+  const pkg = run(`node -e "const p=require('./package.json');console.log(JSON.stringify({scripts:p.scripts,workspaces:p.workspaces},null,2))"`, repoPath);
+  if (pkg.status === 0) {
+    parts.push(`## package.json (scripts & workspaces)\n\`\`\`json\n${pkg.stdout.toString().trim()}\n\`\`\``);
+  }
+
+  // README excerpt (first 60 lines) for project context
+  const readme = run(`head -60 README.md 2>/dev/null || true`, repoPath);
+  const readmeText = readme.stdout.toString().trim();
+  if (readmeText) {
+    parts.push(`## README (excerpt)\n${readmeText}`);
+  }
+
+  return parts.length > 0
+    ? `## Repository Map (auto-generated)\n\n${parts.join('\n\n')}\n\n`
+    : '';
 }
 
 async function runClaude(

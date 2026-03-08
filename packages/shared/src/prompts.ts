@@ -4,6 +4,7 @@ export interface PromptContext {
   issue: Issue;
   project: Project;
   repoPath: string;
+  repoMap?: string;
 }
 
 // Tool sets per task type
@@ -58,13 +59,13 @@ export const ALLOWED_TOOLS: Record<TaskType, string[]> = {
   ],
 };
 
-function header(project: Project, issue: Issue): string {
+function header(project: Project, issue: Issue, repoMap?: string): string {
   return `You are an autonomous contributor to the open-source project ${project.githubOwner}/${project.githubRepo}.
 
 Repository: https://github.com/${project.githubOwner}/${project.githubRepo}
 Issue #${issue.githubNumber}: ${issue.title}
 
-${project.claudeMd ? `## Project Context\n\n${project.claudeMd}\n\n` : ''}`;
+${project.claudeMd ? `## Project Context\n\n${project.claudeMd}\n\n` : ''}${repoMap ?? ''}`;
 }
 
 function footer(): string {
@@ -89,8 +90,8 @@ function footer(): string {
 }
 
 export function buildCodePrompt(ctx: PromptContext): string {
-  const { issue, project } = ctx;
-  return `${header(project, issue)}
+  const { issue, project, repoMap } = ctx;
+  return `${header(project, issue, repoMap)}
 ## Task: Fix/Implement Issue
 
 Issue body:
@@ -103,8 +104,8 @@ ${footer()}`;
 }
 
 export function buildTestsPrompt(ctx: PromptContext): string {
-  const { issue, project } = ctx;
-  return `${header(project, issue)}
+  const { issue, project, repoMap } = ctx;
+  return `${header(project, issue, repoMap)}
 ## Task: Add Tests
 
 Issue body:
@@ -120,8 +121,8 @@ ${footer()}`;
 }
 
 export function buildDocsPrompt(ctx: PromptContext): string {
-  const { issue, project } = ctx;
-  return `${header(project, issue)}
+  const { issue, project, repoMap } = ctx;
+  return `${header(project, issue, repoMap)}
 ## Task: Improve Documentation
 
 Issue body:
@@ -136,8 +137,8 @@ ${footer()}`;
 }
 
 export function buildDepsPrompt(ctx: PromptContext): string {
-  const { issue, project } = ctx;
-  return `${header(project, issue)}
+  const { issue, project, repoMap } = ctx;
+  return `${header(project, issue, repoMap)}
 ## Task: Update Dependencies
 
 Issue body:
@@ -153,8 +154,8 @@ ${footer()}`;
 }
 
 export function buildReviewPrompt(ctx: PromptContext): string {
-  const { issue, project } = ctx;
-  return `${header(project, issue)}
+  const { issue, project, repoMap } = ctx;
+  return `${header(project, issue, repoMap)}
 ## Task: Review Pull Request
 
 Issue body (PR description):
