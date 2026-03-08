@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 import { CoordinatorClient } from './poller.js';
@@ -59,6 +59,7 @@ export async function startWorker(configPath?: string) {
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
+  pruneOldLogs(logDir);
   console.log('[worker] Started. Polling for tasks...');
   await client.setAvailable(true);
 
@@ -168,6 +169,21 @@ export async function startWorker(configPath?: string) {
 
   await client.setAvailable(false);
   console.log('[worker] Stopped.');
+}
+
+function pruneOldLogs(logDir: string, maxAgeDays = 30): void {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let pruned = 0;
+  try {
+    for (const file of readdirSync(logDir)) {
+      const filePath = join(logDir, file);
+      if (statSync(filePath).mtimeMs < cutoff) {
+        rmSync(filePath, { force: true });
+        pruned++;
+      }
+    }
+  } catch { /* non-fatal */ }
+  if (pruned > 0) console.log(`[worker] Pruned ${pruned} log file(s) older than ${maxAgeDays} days.`);
 }
 
 function sleep(ms: number): Promise<void> {
