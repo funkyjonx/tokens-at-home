@@ -3,6 +3,7 @@ import { createHmac } from 'crypto';
 import { Hono } from 'hono';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import { webhookRoutes } from './webhooks.js';
 
@@ -97,5 +98,73 @@ describe('POST /webhooks/github', () => {
       body,
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('installation events', () => {
+  it('registers a project on installation.created', async () => {
+    const db = createTestDb();
+    const app = makeApp(db);
+
+    const body = JSON.stringify({
+      action: 'created',
+      installation: { id: 99, account: { login: 'acme' } },
+      repositories: [{ name: 'my-app', full_name: 'acme/my-app' }],
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'installation',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const projects = db.select().from(schema.projects).all();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].githubOwner).toBe('acme');
+    expect(projects[0].githubRepo).toBe('my-app');
+    expect(projects[0].githubInstallationId).toBe('99');
+  });
+
+  it('cancels available issues on installation.deleted', async () => {
+    const db = createTestDb();
+    db.insert(schema.projects).values({
+      id: 'proj1', githubOwner: 'acme', githubRepo: 'my-app',
+      registeredBy: 'github-app', languages: '["typescript"]',
+      issueLabel: 'tah', taskTypes: '["code"]', maxConcurrent: 3,
+      trustThreshold: 0, githubInstallationId: '99',
+    }).run();
+    db.insert(schema.issues).values({
+      id: 'issue1', projectId: 'proj1', githubNumber: 1,
+      title: 'Fix bug', body: '', taskType: 'code',
+      estimatedComplexity: 'small', estimatedTokens: 8000, status: 'available',
+    }).run();
+
+    const app = makeApp(db);
+    const body = JSON.stringify({
+      action: 'deleted',
+      installation: { id: 99 },
+      repositories: [],
+    });
+    const sig = sign(body, SECRET);
+
+    const res = await app.request('/webhooks/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Event': 'installation',
+        'X-Hub-Signature-256': sig,
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    const issue = db.select().from(schema.issues).where(eq(schema.issues.id, 'issue1')).get();
+    expect(issue?.status).toBe('cancelled');
   });
 });
