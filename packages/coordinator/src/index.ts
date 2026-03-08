@@ -11,6 +11,7 @@ import { taskRoutes, abandonStaleTasks } from './routes/tasks.js';
 import { eventRoutes } from './routes/events.js';
 import { leaderboardRoutes } from './routes/leaderboard.js';
 import { uiRoutes } from './routes/ui.js';
+import { webhookRoutes } from './routes/webhooks.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
@@ -36,6 +37,12 @@ app.route('/tasks', taskRoutes(db));
 app.route('/events', eventRoutes(db));
 app.route('/leaderboard', leaderboardRoutes(db));
 app.route('/ui', uiRoutes(db));
+
+const webhookSecret = process.env['GITHUB_WEBHOOK_SECRET'] ?? '';
+if (!webhookSecret) {
+  console.warn('[coordinator] GITHUB_WEBHOOK_SECRET not set — webhook endpoint will reject all requests');
+}
+app.route('/webhooks/github', webhookRoutes(db, webhookSecret));
 
 // Heartbeat sweep: abandon stale tasks every 60s
 setInterval(async () => {
