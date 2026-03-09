@@ -17,7 +17,7 @@ export function statsCommand(): Command {
 
       const target = username ?? config.githubUsername;
       if (!target) {
-        console.error('Username not found in config. Run tah start first.');
+        console.error('Username not found in config. Run `tah contributor register` first.');
         process.exit(1);
       }
 
