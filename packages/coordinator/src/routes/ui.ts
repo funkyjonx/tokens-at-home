@@ -598,3 +598,124 @@ export function uiRoutes(db: Db) {
 
   return app;
 }
+
+export function landingRoute(db: Db) {
+  const app = new Hono();
+
+  app.get('/', async (c) => {
+    const [totalProjects, totalContributors] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(projects).get(),
+      db.select({ count: sql<number>`count(*)` }).from(contributors).get(),
+    ]);
+
+    const taskStats = await db
+      .select({
+        completed: sql<number>`sum(case when status = 'completed' then 1 else 0 end)`,
+        tokens: sql<number>`sum(case when status = 'completed' then coalesce(tokens_used, 0) else 0 end)`,
+      })
+      .from(tasks)
+      .get();
+
+    const topContributors = await db
+      .select({
+        githubUsername: contributors.githubUsername,
+        tokensUsed: sql<number>`sum(coalesce(${tasks.tokensUsed}, 0))`,
+        tasksCompleted: sql<number>`count(${tasks.id})`,
+      })
+      .from(contributors)
+      .leftJoin(tasks, sql`${tasks.contributorId} = ${contributors.id} AND ${tasks.status} = 'completed'`)
+      .groupBy(contributors.id)
+      .orderBy(sql`sum(coalesce(${tasks.tokensUsed}, 0)) desc`)
+      .limit(5)
+      .all();
+
+    const content = html`
+      <div style="text-align:center; padding: 3rem 1rem 2rem;">
+        <h1 style="font-size:2.5rem; margin-bottom:0.5rem;">Tokens at Home</h1>
+        <p style="font-size:1.15rem; color:#6c757d; max-width:560px; margin:0 auto 2rem;">
+          Open-source projects get free AI contributions. Contributors donate their Claude tokens to fix real issues.
+        </p>
+        <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
+          <a href="https://github.com/apps/tokens-at-home" target="_blank"
+             style="padding:0.65rem 1.5rem; background:#0d6efd; color:#fff; border-radius:8px; font-size:1rem; font-weight:600;">
+            Add your project
+          </a>
+          <a href="/ui/onboarding"
+             style="padding:0.65rem 1.5rem; background:#e9ecef; color:#212529; border-radius:8px; font-size:1rem; font-weight:600;">
+            Start contributing
+          </a>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="max-width:700px; margin:0 auto 2.5rem;">
+        <div class="stat-card">
+          <div class="value">${fmtNum(totalProjects?.count ?? 0)}</div>
+          <div class="label">Projects</div>
+        </div>
+        <div class="stat-card">
+          <div class="value">${fmtNum(totalContributors?.count ?? 0)}</div>
+          <div class="label">Contributors</div>
+        </div>
+        <div class="stat-card">
+          <div class="value">${fmtNum(taskStats?.completed ?? 0)}</div>
+          <div class="label">PRs Submitted</div>
+        </div>
+        <div class="stat-card">
+          <div class="value">${fmtNum(Math.round((taskStats?.tokens ?? 0) / 1000))}K</div>
+          <div class="label">Tokens Donated</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; max-width:800px; margin:0 auto 2.5rem;">
+        <div class="card">
+          <h2 style="margin-top:0;">For project owners</h2>
+          <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
+            <li>Install the GitHub App on your repo</li>
+            <li>Label issues with <code>tah</code></li>
+            <li>Receive pull requests automatically</li>
+          </ol>
+          <a href="https://github.com/apps/tokens-at-home" target="_blank"
+             style="display:inline-block; margin-top:1rem; padding:0.45rem 1rem; background:#0d6efd; color:#fff; border-radius:6px; font-size:0.9rem;">
+            Install App →
+          </a>
+        </div>
+        <div class="card">
+          <h2 style="margin-top:0;">For contributors</h2>
+          <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
+            <li>Install Claude Code &amp; the tah CLI</li>
+            <li>Run <code>tah start</code></li>
+            <li>Claude works on issues while you sleep</li>
+          </ol>
+          <a href="/ui/onboarding"
+             style="display:inline-block; margin-top:1rem; padding:0.45rem 1rem; background:#198754; color:#fff; border-radius:6px; font-size:0.9rem;">
+            Get started →
+          </a>
+        </div>
+      </div>
+
+      ${topContributors.some((c) => (c.tokensUsed ?? 0) > 0) ? html`
+        <div style="max-width:600px; margin:0 auto;">
+          <h2 style="text-align:center; margin-bottom:1rem;">Top Contributors</h2>
+          <table>
+            <thead><tr><th>#</th><th>Contributor</th><th>Tokens Donated</th><th>PRs</th></tr></thead>
+            <tbody>
+              ${topContributors.map((c, i) => html`<tr>
+                <td class="rank rank-${i + 1}">${i + 1}</td>
+                <td>@${c.githubUsername}</td>
+                <td>${fmtNum(c.tokensUsed ?? 0)}</td>
+                <td>${fmtNum(c.tasksCompleted ?? 0)}</td>
+              </tr>`)}
+            </tbody>
+          </table>
+          <p style="text-align:center; margin-top:0.75rem;">
+            <a href="/ui/leaderboard">Full leaderboard →</a>
+          </p>
+        </div>
+      ` : ''}
+    `;
+
+    return c.html(String(layout('Home', content)));
+  });
+
+  return app;
+}

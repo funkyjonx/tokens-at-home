@@ -10,7 +10,7 @@ import { contributorRoutes } from './routes/contributors.js';
 import { taskRoutes, abandonStaleTasks } from './routes/tasks.js';
 import { eventRoutes } from './routes/events.js';
 import { leaderboardRoutes } from './routes/leaderboard.js';
-import { uiRoutes } from './routes/ui.js';
+import { uiRoutes, landingRoute } from './routes/ui.js';
 import { webhookRoutes } from './routes/webhooks.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
@@ -37,6 +37,7 @@ app.route('/tasks', taskRoutes(db));
 app.route('/events', eventRoutes(db));
 app.route('/leaderboard', leaderboardRoutes(db));
 app.route('/ui', uiRoutes(db));
+app.route('/', landingRoute(db));
 
 const webhookSecret = process.env['GITHUB_WEBHOOK_SECRET'] ?? '';
 if (!webhookSecret) {
