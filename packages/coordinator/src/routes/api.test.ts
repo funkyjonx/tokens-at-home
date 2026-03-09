@@ -916,6 +916,20 @@ describe('Coordinator API', () => {
     });
   });
 
+  describe('tasks/next budget', () => {
+    it('returns 204 when contributor has unlimited budget and no issues', async () => {
+      await app.request('/contributors/me/available', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ available: true }),
+      });
+      const res = await app.request('/tasks/next', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(res.status).toBe(204);
+    });
+  });
+
   describe('contributor budget', () => {
     it('registers with a task budget', async () => {
       const res = await app.request('/contributors', {
