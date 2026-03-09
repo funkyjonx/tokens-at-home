@@ -15,42 +15,95 @@ function layout(title: string, content: unknown) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Tokens at Home</title>
   <style>
+    :root {
+      --bg: #070d1a;
+      --bg-card: #0d1629;
+      --bg-hover: #111e38;
+      --border: #1e3057;
+      --border-glow: #1e4a8a;
+      --accent: #38b6ff;
+      --accent-dim: #1a6fa8;
+      --accent-glow: rgba(56, 182, 255, 0.15);
+      --text: #e8f0fe;
+      --text-muted: #6b8cba;
+      --text-dim: #3d5a8a;
+      --green: #22c55e;
+      --gold: #f59e0b;
+      --silver: #94a3b8;
+      --bronze: #c47c3c;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #f8f9fa; color: #212529; line-height: 1.5; }
-    a { color: #0d6efd; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    nav { background: #1a1a2e; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
-    nav .brand { color: #fff; font-weight: 700; font-size: 1.1rem; }
-    nav a { color: #adb5bd; font-size: 0.9rem; }
-    nav a:hover { color: #fff; text-decoration: none; }
-    .container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.75rem; margin-bottom: 1rem; }
-    h2 { font-size: 1.25rem; margin: 1.5rem 0 0.75rem; }
-    .card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: #fff; text-decoration: none; }
+    nav {
+      background: rgba(7, 13, 26, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex; align-items: center; gap: 1.5rem;
+      position: sticky; top: 0; z-index: 100;
+    }
+    nav .brand { color: #fff; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; }
+    nav a { color: var(--text-muted); font-size: 0.9rem; transition: color 0.15s; }
+    nav a:hover { color: var(--text); }
+    .container { max-width: 960px; margin: 2rem auto; padding: 0 1.25rem; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 1rem; color: #fff; letter-spacing: -0.02em; }
+    h2 { font-size: 1.15rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: #fff; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border-glow); }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .stat-card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem; text-align: center; }
-    .stat-card .value { font-size: 2rem; font-weight: 700; color: #0d6efd; }
-    .stat-card .label { font-size: 0.85rem; color: #6c757d; margin-top: 0.25rem; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #dee2e6; }
-    th { background: #f1f3f5; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; color: #495057; border-bottom: 1px solid #dee2e6; }
-    td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f3f5; font-size: 0.9rem; }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      text-align: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+    .stat-card .value { font-size: 2rem; font-weight: 700; color: var(--accent); letter-spacing: -0.03em; }
+    .stat-card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    table { width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    th { background: rgba(30, 48, 87, 0.4); padding: 0.75rem 1rem; text-align: left; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid rgba(30, 48, 87, 0.4); font-size: 0.9rem; color: var(--text); }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #f8f9fa; }
-    .badge { display: inline-block; padding: 0.2em 0.55em; border-radius: 4px; font-size: 0.75rem; background: #e9ecef; color: #495057; margin: 0.1em; }
+    tr:hover td { background: var(--bg-hover); }
+    .badge { display: inline-block; padding: 0.2em 0.6em; border-radius: 4px; font-size: 0.75rem; background: rgba(56, 182, 255, 0.1); color: var(--accent); border: 1px solid rgba(56, 182, 255, 0.2); margin: 0.1em; }
     form.search { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-    form.search input, form.search select { padding: 0.45rem 0.75rem; border: 1px solid #ced4da; border-radius: 6px; font-size: 0.9rem; }
-    form.search button { padding: 0.45rem 1rem; background: #0d6efd; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
-    form.search button:hover { background: #0b5ed7; }
-    .empty { color: #6c757d; padding: 2rem; text-align: center; }
-    .rank { font-weight: 700; color: #6c757d; }
-    .rank-1 { color: #ffc107; }
-    .rank-2 { color: #adb5bd; }
-    .rank-3 { color: #cd7f32; }
+    form.search input, form.search select {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: var(--bg-card);
+      color: var(--text);
+    }
+    form.search input:focus, form.search select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    form.search button { padding: 0.45rem 1rem; background: var(--accent); color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: background 0.15s; }
+    form.search button:hover { background: #60cbff; }
+    .empty { color: var(--text-muted); padding: 2rem; text-align: center; }
+    .rank { font-weight: 700; color: var(--text-muted); }
+    .rank-1 { color: var(--gold); }
+    .rank-2 { color: var(--silver); }
+    .rank-3 { color: var(--bronze); }
     .period-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .period-tabs a { padding: 0.35rem 0.8rem; border-radius: 6px; font-size: 0.85rem; color: #495057; background: #e9ecef; }
-    .period-tabs a.active { background: #0d6efd; color: #fff; }
-    footer { text-align: center; padding: 2rem; color: #6c757d; font-size: 0.85rem; }
-    footer a { color: #6c757d; }
+    .period-tabs a { padding: 0.35rem 0.8rem; border-radius: 6px; font-size: 0.85rem; color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); transition: all 0.15s; }
+    .period-tabs a:hover { color: var(--text); border-color: var(--border-glow); }
+    .period-tabs a.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+    code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.875em; background: rgba(56, 182, 255, 0.08); color: var(--accent); padding: 0.15em 0.4em; border-radius: 4px; border: 1px solid rgba(56, 182, 255, 0.15); }
+    pre { background: #050c18; border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; overflow-x: auto; }
+    pre code { background: none; border: none; padding: 0; color: var(--accent); font-size: 0.9rem; }
+    footer { text-align: center; padding: 2rem; color: var(--text-dim); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 3rem; }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
   </style>
 </head>
 <body>
@@ -66,7 +119,11 @@ function layout(title: string, content: unknown) {
     ${content}
   </div>
   <footer>
-    <a href="https://github.com/tokens-at-home/tah" target="_blank">GitHub</a>
+    <a href="https://github.com/funkyjonx/tokens-at-home" target="_blank">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="/ui">Dashboard</a>
+    &nbsp;·&nbsp;
+    <a href="/ui/onboarding">Get Started</a>
   </footer>
 </body>
 </html>`;
@@ -600,7 +657,7 @@ export function uiRoutes(db: Db) {
   app.get('/onboarding', (c) => {
     const content = html`
       <h1>Contributor Onboarding</h1>
-      <p style="color:#6c757d; margin-bottom:2rem;">
+      <p style="color:var(--text-muted); margin-bottom:2rem;">
         Follow these steps to start donating your Claude tokens to open-source projects.
       </p>
 
@@ -617,7 +674,7 @@ export function uiRoutes(db: Db) {
       <div class="card">
         <h2 style="margin-top:0;">Step 2: Install the tah CLI</h2>
         <p>The <code>tah</code> CLI connects your machine to the coordinator and manages the worker loop.</p>
-        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>npm install -g @tah/cli</code></pre>
+        <pre><code>npm install -g @tah/cli</code></pre>
       </div>
 
       <div class="card">
@@ -632,8 +689,8 @@ export function uiRoutes(db: Db) {
       <div class="card">
         <h2 style="margin-top:0;">Step 4: Register as a contributor</h2>
         <p>Create your contributor profile on the coordinator.</p>
-        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah contributor register</code></pre>
-        <p style="margin-top:0.75rem; color:#6c757d; font-size:0.9rem;">
+        <pre><code>tah contributor register</code></pre>
+        <p style="margin-top:0.75rem; color:var(--text-muted); font-size:0.9rem;">
           This links your GitHub username to your contributor account and generates an auth token stored in <code>~/.tah/config.json</code>.
         </p>
       </div>
@@ -641,8 +698,8 @@ export function uiRoutes(db: Db) {
       <div class="card">
         <h2 style="margin-top:0;">Step 5: Start contributing</h2>
         <p>Run the worker. It will poll for available issues, clone repos, invoke Claude, and submit PRs automatically.</p>
-        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah start</code></pre>
-        <p style="margin-top:0.75rem; color:#6c757d; font-size:0.9rem;">
+        <pre><code>tah start</code></pre>
+        <p style="margin-top:0.75rem; color:var(--text-muted); font-size:0.9rem;">
           Leave it running in the background. Use <code>Ctrl+C</code> to stop gracefully.
         </p>
       </div>
@@ -650,11 +707,11 @@ export function uiRoutes(db: Db) {
       <div class="card">
         <h2 style="margin-top:0;">Optional: Pin projects you care about</h2>
         <p>By default the worker picks up any available issue. You can pin specific projects to prioritize them.</p>
-        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah project pin owner/repo</code></pre>
+        <pre><code>tah project pin owner/repo</code></pre>
       </div>
 
       <div style="text-align:center; padding:1.5rem 0;">
-        <a href="/ui/leaderboard" style="color:#0d6efd;">See the leaderboard →</a>
+        <a href="/ui/leaderboard">See the leaderboard →</a>
       </div>
     `;
     return c.html(String(layout('Contributor Onboarding', content)));
