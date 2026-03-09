@@ -14,11 +14,13 @@ export class CoordinatorClient {
     return `${this.config.coordinatorUrl}${path}`;
   }
 
-  async getNextTask(): Promise<TaskAssignment | null> {
+  async getNextTask(): Promise<TaskAssignment | { budgetExhausted: true } | null> {
     const res = await fetch(this.url('/tasks/next'), { headers: this.headers });
     if (res.status === 204) return null;
     if (!res.ok) throw new Error(`GET /tasks/next failed: ${res.status}`);
-    return res.json() as Promise<TaskAssignment>;
+    const data = await res.json() as Record<string, unknown>;
+    if (data['budgetExhausted'] === true) return { budgetExhausted: true as const };
+    return data as unknown as TaskAssignment;
   }
 
   async sendProgress(taskId: string, phase: string, tokensUsed?: number, elapsedMs?: number): Promise<void> {
