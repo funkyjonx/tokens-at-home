@@ -915,4 +915,54 @@ describe('Coordinator API', () => {
       expect(allTime).toHaveProperty('rank');
     });
   });
+
+  describe('contributor budget', () => {
+    it('registers with a task budget', async () => {
+      const res = await app.request('/contributors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUsername: 'budgetuser', languages: ['typescript'], taskBudget: 5 }),
+      });
+      expect(res.status).toBe(201);
+      const data = await res.json() as { contributor: Contributor; token: string };
+      expect(data.contributor.taskBudget).toBe(5);
+    });
+
+    it('registers without a task budget (unlimited)', async () => {
+      const res = await app.request('/contributors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUsername: 'unlimiteduser', languages: ['typescript'] }),
+      });
+      expect(res.status).toBe(201);
+      const data = await res.json() as { contributor: Contributor; token: string };
+      expect(data.contributor.taskBudget).toBeNull();
+    });
+
+    it('adds to budget via POST /contributors/me/budget', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 3 }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json() as { taskBudget: number };
+      expect(data.taskBudget).toBe(3);
+    });
+
+    it('stacks budget additions', async () => {
+      await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 3 }),
+      });
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 2 }),
+      });
+      const data = await res.json() as { taskBudget: number };
+      expect(data.taskBudget).toBe(5);
+    });
+  });
 });

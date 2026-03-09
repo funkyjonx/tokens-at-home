@@ -5,6 +5,7 @@ import {
   RegisterContributorSchema,
   SetAvailableSchema,
   UpdateContributorSchema,
+  AddBudgetSchema,
 } from '@tah/shared';
 import type { Db } from '../db/index.js';
 import { contributors, projects, tasks, issues, authTokens, projectPins } from '../db/schema.js';
@@ -150,6 +151,7 @@ export function contributorRoutes(db: Db) {
       maxConcurrent: input.maxConcurrent,
       trustScore: 0,
       available: false,
+      taskBudget: input.taskBudget ?? null,
     });
 
     // Issue an auth token for daemon/CLI use
@@ -208,6 +210,28 @@ export function contributorRoutes(db: Db) {
       .where(eq(contributors.id, contributor.id));
 
     return c.json({ ok: true, available: parsed.data.available });
+  });
+
+  // POST /me/budget — add N tasks to budget
+  app.post('/me/budget', async (c) => {
+    const token = extractBearerToken(c.req.header('Authorization'));
+    if (!token) return c.json({ error: 'Unauthorized' }, 401);
+    const contributor = await getContributorFromToken(db, token);
+    if (!contributor) return c.json({ error: 'Unauthorized' }, 401);
+
+    const body = await c.req.json();
+    const parsed = AddBudgetSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+    const current = contributor.taskBudget ?? 0;
+    const newBudget = current + parsed.data.add;
+
+    await db
+      .update(contributors)
+      .set({ taskBudget: newBudget })
+      .where(eq(contributors.id, contributor.id));
+
+    return c.json({ taskBudget: newBudget });
   });
 
   // POST /me/pins — pin a project
@@ -370,5 +394,6 @@ function deserializeContributor(c: typeof contributors.$inferSelect) {
     ...rest,
     languages: JSON.parse(c.languages) as string[],
     available: Boolean(c.available),
+    taskBudget: c.taskBudget ?? null,
   };
 }
