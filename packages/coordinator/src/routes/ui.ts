@@ -596,6 +596,69 @@ export function uiRoutes(db: Db) {
     return c.html(layout(`@${contributor.githubUsername}`, content) as unknown as string);
   });
 
+  app.get('/onboarding', (c) => {
+    const content = html`
+      <h1>Contributor Onboarding</h1>
+      <p style="color:#6c757d; margin-bottom:2rem;">
+        Follow these steps to start donating your Claude tokens to open-source projects.
+      </p>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 1: Install Claude Code</h2>
+        <p>Claude Code is the AI coding assistant that does the actual work. You need a Claude account with API access.</p>
+        <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
+          <li>Sign up at <a href="https://claude.ai" target="_blank">claude.ai</a> and add API credits</li>
+          <li>Install Claude Code: <code>npm install -g @anthropic-ai/claude-code</code></li>
+          <li>Authenticate: <code>claude login</code></li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 2: Install the tah CLI</h2>
+        <p>The <code>tah</code> CLI connects your machine to the coordinator and manages the worker loop.</p>
+        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>npm install -g @tah/cli</code></pre>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 3: Install the GitHub CLI</h2>
+        <p>The worker uses <code>gh</code> to create pull requests on your behalf.</p>
+        <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
+          <li>Install from <a href="https://cli.github.com" target="_blank">cli.github.com</a></li>
+          <li>Authenticate: <code>gh auth login</code></li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 4: Register as a contributor</h2>
+        <p>Create your contributor profile on the coordinator.</p>
+        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah contributor register</code></pre>
+        <p style="margin-top:0.75rem; color:#6c757d; font-size:0.9rem;">
+          This links your GitHub username to your contributor account and generates an auth token stored in <code>~/.tah/config.json</code>.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 5: Start contributing</h2>
+        <p>Run the worker. It will poll for available issues, clone repos, invoke Claude, and submit PRs automatically.</p>
+        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah start</code></pre>
+        <p style="margin-top:0.75rem; color:#6c757d; font-size:0.9rem;">
+          Leave it running in the background. Use <code>Ctrl+C</code> to stop gracefully.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Optional: Pin projects you care about</h2>
+        <p>By default the worker picks up any available issue. You can pin specific projects to prioritize them.</p>
+        <pre style="background:#f1f3f5; padding:0.75rem 1rem; border-radius:6px; overflow-x:auto;"><code>tah project pin owner/repo</code></pre>
+      </div>
+
+      <div style="text-align:center; padding:1.5rem 0;">
+        <a href="/ui/leaderboard" style="color:#0d6efd;">See the leaderboard →</a>
+      </div>
+    `;
+    return c.html(String(layout('Contributor Onboarding', content)));
+  });
+
   return app;
 }
 
