@@ -40,6 +40,7 @@ export const RegisterContributorSchema = z.object({
   languages: languageList,
   maxConcurrent: z.number().int().min(1).max(5).default(1),
   maxComplexity: IssueComplexitySchema.default('medium'),
+  taskBudget: z.number().int().min(1).max(10000).optional(),
 });
 export type RegisterContributorInput = z.infer<typeof RegisterContributorSchema>;
 
@@ -49,6 +50,11 @@ export const UpdateContributorSchema = z.object({
   maxComplexity: IssueComplexitySchema.optional(),
 });
 export type UpdateContributorInput = z.infer<typeof UpdateContributorSchema>;
+
+export const AddBudgetSchema = z.object({
+  add: z.number().int().min(1).max(10000),
+});
+export type AddBudgetInput = z.infer<typeof AddBudgetSchema>;
 
 export const SetAvailableSchema = z.object({
   available: z.boolean(),
