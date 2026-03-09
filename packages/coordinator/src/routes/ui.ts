@@ -696,8 +696,13 @@ export function landingRoute(db: Db) {
     const content = html`
       <div style="text-align:center; padding: 3rem 1rem 2rem;">
         <h1 style="font-size:2.5rem; margin-bottom:0.5rem;">Tokens at Home</h1>
-        <p style="font-size:1.15rem; color:#6c757d; max-width:560px; margin:0 auto 2rem;">
-          Open-source projects get free AI contributions. Contributors donate their Claude tokens to fix real issues.
+        <p style="font-size:1.2rem; color:#212529; max-width:600px; margin:0 auto 0.75rem; font-weight:500;">
+          Put your surplus Claude tokens to work for open source.
+        </p>
+        <p style="font-size:1rem; color:#6c757d; max-width:580px; margin:0 auto 2rem; line-height:1.7;">
+          Every Claude subscription comes with tokens you may not fully use. Tokens at Home lets you allocate those
+          surplus tokens to open-source projects you care about — and Claude does the work: cloning repos, fixing
+          issues, and opening pull requests, automatically.
         </p>
         <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;">
           <a href="https://github.com/apps/tokens-at-home" target="_blank"
@@ -733,6 +738,9 @@ export function landingRoute(db: Db) {
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; max-width:800px; margin:0 auto 2.5rem;">
         <div class="card">
           <h2 style="margin-top:0;">For project owners</h2>
+          <p style="color:#6c757d; font-size:0.9rem; margin-bottom:0.75rem;">
+            Get AI-generated pull requests on your issues — at zero cost to you.
+          </p>
           <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
             <li>Install the GitHub App on your repo</li>
             <li>Label issues with <code>tah</code></li>
@@ -745,10 +753,13 @@ export function landingRoute(db: Db) {
         </div>
         <div class="card">
           <h2 style="margin-top:0;">For contributors</h2>
+          <p style="color:#6c757d; font-size:0.9rem; margin-bottom:0.75rem;">
+            Pin the projects you care about and allocate your surplus tokens to them each cycle.
+          </p>
           <ol style="padding-left:1.25rem; line-height:2; margin-top:0.75rem;">
             <li>Install Claude Code &amp; the tah CLI</li>
-            <li>Run <code>tah start</code></li>
-            <li>Claude works on issues while you sleep</li>
+            <li>Pin projects you want to support</li>
+            <li>Run <code>tah start</code> — Claude does the rest</li>
           </ol>
           <a href="/ui/onboarding"
              style="display:inline-block; margin-top:1rem; padding:0.45rem 1rem; background:#198754; color:#fff; border-radius:6px; font-size:0.9rem;">
