@@ -964,5 +964,23 @@ describe('Coordinator API', () => {
       const data = await res.json() as { taskBudget: number };
       expect(data.taskBudget).toBe(5);
     });
+
+    it('rejects invalid budget add values with 400', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 0 }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects unauthenticated budget add with 401', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add: 3 }),
+      });
+      expect(res.status).toBe(401);
+    });
   });
 });
