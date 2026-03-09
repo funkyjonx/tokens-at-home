@@ -129,7 +129,8 @@ async function deactivateInstallation(db: Db, installationId: string) {
     .all();
 
   for (const project of affectedProjects) {
-    await deactivateProjectIssues(db, project.id);
+    await db.delete(issues).where(eq(issues.projectId, project.id));
+    await db.delete(projects).where(eq(projects.id, project.id));
   }
 }
 
@@ -139,7 +140,9 @@ async function deactivateRepo(db: Db, owner: string, repo: string) {
     .from(projects)
     .where(and(eq(projects.githubOwner, owner), eq(projects.githubRepo, repo)))
     .get();
-  if (project) await deactivateProjectIssues(db, project.id);
+  if (!project) return;
+  await db.delete(issues).where(eq(issues.projectId, project.id));
+  await db.delete(projects).where(eq(projects.id, project.id));
 }
 
 async function deactivateProjectIssues(db: Db, projectId: string) {

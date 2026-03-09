@@ -227,7 +227,7 @@ describe('installation events', () => {
     expect(projects[0].githubInstallationId).toBe('99');
   });
 
-  it('cancels available issues on installation.deleted', async () => {
+  it('removes project and issues on installation.deleted', async () => {
     const db = createTestDb();
     db.insert(schema.projects).values({
       id: 'proj1', githubOwner: 'acme', githubRepo: 'my-app',
@@ -261,7 +261,9 @@ describe('installation events', () => {
 
     expect(res.status).toBe(200);
     const issue = db.select().from(schema.issues).where(eq(schema.issues.id, 'issue1')).get();
-    expect(issue?.status).toBe('cancelled');
+    expect(issue).toBeUndefined();
+    const project = db.select().from(schema.projects).where(eq(schema.projects.id, 'proj1')).get();
+    expect(project).toBeUndefined();
   });
 });
 
