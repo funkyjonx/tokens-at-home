@@ -11,9 +11,10 @@ primary_region = "ord"
 [env]
   PORT = "3000"
   NODE_ENV = "production"
-  DATABASE_URL = "/data/tah.db"
   GITHUB_APP_ID = "3042909"
-  # GITHUB_WEBHOOK_SECRET — set via: fly secrets set GITHUB_WEBHOOK_SECRET=<your-secret>
+  # Secrets (set via fly secrets set):
+  #   DATABASE_URL=/data/tah.db
+  #   GITHUB_WEBHOOK_SECRET=<your-secret>
 
 [http_service]
   internal_port = 3000
