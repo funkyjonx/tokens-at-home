@@ -259,6 +259,7 @@ export function projectCommand(): Command {
       const config = loadConfig();
       requireAuth(config);
       const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+      const resolvedId = await api.resolveProjectId(projectId);
 
       const payload: Record<string, unknown> = {
         githubNumber: parseInt(issueNumber, 10),
@@ -268,7 +269,7 @@ export function projectCommand(): Command {
       if (opts.body) payload['body'] = opts.body;
       if (opts.complexity) payload['estimatedComplexity'] = opts.complexity;
 
-      const issue = await api.post<Issue & { warning?: string }>(`/projects/${projectId}/issues`, payload);
+      const issue = await api.post<Issue & { warning?: string }>(`/projects/${resolvedId}/issues`, payload);
 
       console.log(`Issue registered: ${issue.id}`);
       console.log(`  #${issue.githubNumber}: ${issue.title}`);
@@ -283,7 +284,8 @@ export function projectCommand(): Command {
     .action(async (projectId: string) => {
       const config = loadConfig();
       const api = new TahApiClient(config.coordinatorUrl);
-      const issues = await api.get<Issue[]>(`/projects/${projectId}/issues`);
+      const resolvedId = await api.resolveProjectId(projectId);
+      const issues = await api.get<Issue[]>(`/projects/${resolvedId}/issues`);
 
       if (issues.length === 0) {
         console.log('No issues.');
@@ -328,7 +330,8 @@ export function projectCommand(): Command {
           console.error('Provide a project ID or use --all to sync all your projects.');
           process.exit(1);
         }
-        const project = await api.get<Project>(`/projects/${projectId}`);
+        const resolvedId = await api.resolveProjectId(projectId);
+        const project = await api.get<Project>(`/projects/${resolvedId}`);
         await syncProjectIssues(api, project, opts.dryRun ?? false);
       }
     });
@@ -410,7 +413,8 @@ export function projectCommand(): Command {
     .action(async (projectId: string) => {
       const config = loadConfig();
       const api = new TahApiClient(config.coordinatorUrl);
-      const issues = await api.get<Issue[]>(`/projects/${projectId}/issues`);
+      const resolvedId = await api.resolveProjectId(projectId);
+      const issues = await api.get<Issue[]>(`/projects/${resolvedId}/issues`);
 
       if (issues.length === 0) {
         console.log('No issues.');

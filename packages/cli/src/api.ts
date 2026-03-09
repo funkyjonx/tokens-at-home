@@ -99,6 +99,16 @@ export class TahApiClient {
     return res.json() as Promise<T>;
   }
 
+  async resolveProjectId(idOrSlug: string): Promise<string> {
+    if (idOrSlug.includes('/')) {
+      const [owner, repo] = idOrSlug.split('/');
+      const project = await this.findProjectByRepo(owner, repo);
+      if (!project) throw new Error(`Project ${idOrSlug} not found.`);
+      return project.id;
+    }
+    return idOrSlug;
+  }
+
   async findProjectByRepo(owner: string, repo: string): Promise<{ id: string } | null> {
     const results = await this.get<Array<{ id: string; githubOwner: string; githubRepo: string }>>(`/projects?q=${encodeURIComponent(owner + '/' + repo)}`);
     return results.find((p) => p.githubOwner === owner && p.githubRepo === repo) ?? null;
