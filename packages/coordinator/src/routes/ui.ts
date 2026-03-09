@@ -55,11 +55,12 @@ function layout(title: string, content: unknown) {
 </head>
 <body>
   <nav>
-    <span class="brand">Tokens at Home</span>
+    <a href="/" class="brand" style="text-decoration:none;">Tokens at Home</a>
     <a href="/ui">Dashboard</a>
     <a href="/ui/projects">Projects</a>
     <a href="/ui/contributors">Contributors</a>
     <a href="/ui/leaderboard">Leaderboard</a>
+    <a href="/ui/onboarding" style="margin-left:auto;">Get Started</a>
   </nav>
   <div class="container">
     ${content}
