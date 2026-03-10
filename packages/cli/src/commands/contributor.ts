@@ -224,5 +224,27 @@ export function contributorCommand(): Command {
       }
     });
 
+  const budgetCmd = new Command('budget').description('Manage your task budget');
+
+  budgetCmd
+    .command('add <n>')
+    .description('Add N tasks to your budget')
+    .action(async (n: string) => {
+      const count = parseInt(n, 10);
+      if (!count || count < 1) {
+        console.error('Please provide a positive number of tasks. Example: tah contributor budget add 5');
+        process.exit(1);
+      }
+
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+
+      const result = await api.post<{ taskBudget: number }>('/contributors/me/budget', { add: count });
+      console.log(`Budget updated: ${result.taskBudget} task${result.taskBudget === 1 ? '' : 's'} remaining.`);
+    });
+
+  cmd.addCommand(budgetCmd);
+
   return cmd;
 }
