@@ -39,6 +39,7 @@ function createTestDb() {
       max_concurrent INTEGER NOT NULL DEFAULT 1,
       trust_score REAL NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 0,
+      task_budget INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS issues (
@@ -912,6 +913,88 @@ describe('Coordinator API', () => {
       expect(allTime).toHaveProperty('tokensDonated');
       expect(allTime).toHaveProperty('successRate');
       expect(allTime).toHaveProperty('rank');
+    });
+  });
+
+  describe('tasks/next budget', () => {
+    it('returns 204 when contributor has unlimited budget and no issues', async () => {
+      await app.request('/contributors/me/available', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ available: true }),
+      });
+      const res = await app.request('/tasks/next', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      expect(res.status).toBe(204);
+    });
+  });
+
+  describe('contributor budget', () => {
+    it('registers with a task budget', async () => {
+      const res = await app.request('/contributors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUsername: 'budgetuser', languages: ['typescript'], taskBudget: 5 }),
+      });
+      expect(res.status).toBe(201);
+      const data = await res.json() as { contributor: Contributor; token: string };
+      expect(data.contributor.taskBudget).toBe(5);
+    });
+
+    it('registers without a task budget (unlimited)', async () => {
+      const res = await app.request('/contributors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUsername: 'unlimiteduser', languages: ['typescript'] }),
+      });
+      expect(res.status).toBe(201);
+      const data = await res.json() as { contributor: Contributor; token: string };
+      expect(data.contributor.taskBudget).toBeNull();
+    });
+
+    it('adds to budget via POST /contributors/me/budget', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 3 }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json() as { taskBudget: number };
+      expect(data.taskBudget).toBe(3);
+    });
+
+    it('stacks budget additions', async () => {
+      await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 3 }),
+      });
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 2 }),
+      });
+      const data = await res.json() as { taskBudget: number };
+      expect(data.taskBudget).toBe(5);
+    });
+
+    it('rejects invalid budget add values with 400', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ add: 0 }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects unauthenticated budget add with 401', async () => {
+      const res = await app.request('/contributors/me/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add: 3 }),
+      });
+      expect(res.status).toBe(401);
     });
   });
 });

@@ -24,6 +24,7 @@ export const contributors = sqliteTable('contributors', {
   maxComplexity: text('max_complexity').notNull().default('medium'),
   trustScore: real('trust_score').notNull().default(0),
   available: integer('available', { mode: 'boolean' }).notNull().default(false),
+  taskBudget: integer('task_budget'),  // null = unlimited, 0 = exhausted
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });
 

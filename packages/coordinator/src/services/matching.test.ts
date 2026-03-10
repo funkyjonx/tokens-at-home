@@ -36,6 +36,7 @@ function createTestDb() {
       max_complexity TEXT NOT NULL DEFAULT 'medium',
       trust_score REAL NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 0,
+      task_budget INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS project_pins (

@@ -44,6 +44,7 @@ export function initSchema() {
       max_complexity TEXT NOT NULL DEFAULT 'medium',
       trust_score REAL NOT NULL DEFAULT 0,
       available INTEGER NOT NULL DEFAULT 0,
+      task_budget INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -109,6 +110,7 @@ export function initSchema() {
     "ALTER TABLE projects ADD COLUMN trust_threshold REAL NOT NULL DEFAULT 0",
     "ALTER TABLE projects ADD COLUMN claude_md TEXT",
     "ALTER TABLE projects ADD COLUMN github_installation_id TEXT",
+    "ALTER TABLE contributors ADD COLUMN task_budget INTEGER",
   ];
   for (const stmt of addColumns) {
     try { sqlite.exec(stmt); } catch { /* column already exists */ }

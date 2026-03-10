@@ -1,11 +1,104 @@
 import { Command } from 'commander';
 import { createInterface } from 'readline';
-import { loadConfig, requireAuth } from '../config.js';
+import { loadConfig, saveConfig, requireAuth, DEFAULT_COORDINATOR_URL } from '../config.js';
 import { TahApiClient } from '../api.js';
-import type { Contributor, PublicContributor } from '@tah/shared';
+import { getGithubUsername } from '../utils.js';
+import type { Contributor, PublicContributor, IssueComplexity } from '@tah/shared';
 
 export function contributorCommand(): Command {
   const cmd = new Command('contributor').description('Manage contributor profile');
+
+  cmd
+    .command('register')
+    .description('Register as a contributor (run once before tah start)')
+    .option('--coordinator <url>', 'Coordinator URL', DEFAULT_COORDINATOR_URL)
+    .action(async (opts: { coordinator: string }) => {
+      const config = loadConfig();
+      if (config.authToken && config.contributorId) {
+        console.log(`Already registered as @${config.githubUsername}. Run 'tah contributor update' to change your profile.`);
+        return;
+      }
+
+      const coordinatorUrl = opts.coordinator ?? config.coordinatorUrl;
+      console.log('\n  Tokens at Home — donate your Claude capacity to open source\n');
+
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const p = (q: string) => new Promise<string>((resolve) => rl.question(q, (a) => resolve(a.trim())));
+
+      let username: string | undefined;
+      const detected = getGithubUsername();
+      if (detected) {
+        const confirm = await p(`  Register as ${detected}? [Y/n]: `);
+        username = confirm.toLowerCase() === 'n' ? (await p('  GitHub username: ')) : detected;
+      } else {
+        username = await p('  GitHub username: ');
+      }
+
+      if (!username) {
+        console.error('Username required');
+        rl.close();
+        process.exit(1);
+      }
+
+      const langsRaw = await p('  Languages (comma-separated, e.g. typescript,python) [typescript]: ');
+      const languages = langsRaw
+        ? langsRaw.split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
+        : ['typescript'];
+
+      const maxConcurrentStr = await p('  Max concurrent tasks [1]: ');
+      const maxConcurrent = parseInt(maxConcurrentStr || '1', 10) || 1;
+
+      const validComplexities = ['trivial', 'small', 'medium', 'large'];
+      let maxComplexity: IssueComplexity = 'medium';
+      while (true) {
+        const raw = await p('  Max complexity (trivial/small/medium/large) [medium]: ');
+        if (!raw) break;
+        if (validComplexities.includes(raw)) { maxComplexity = raw as IssueComplexity; break; }
+        console.log('  Invalid. Choose: trivial, small, medium, large');
+      }
+
+      const budgetRaw = await p('  Task budget (number of tasks before pausing, leave blank for unlimited): ');
+      const taskBudget = budgetRaw ? (parseInt(budgetRaw, 10) || undefined) : undefined;
+
+      rl.close();
+
+      const api = new TahApiClient(coordinatorUrl);
+      let result: { contributor: Contributor; token: string };
+      try {
+        result = await api.post<{ contributor: Contributor; token: string }>('/contributors', {
+          githubUsername: username,
+          languages,
+          maxConcurrent,
+          maxComplexity,
+          ...(taskBudget !== undefined ? { taskBudget } : {}),
+        });
+
+        saveConfig({
+          ...config,
+          coordinatorUrl,
+          contributorId: result.contributor.id,
+          authToken: result.token,
+          githubUsername: result.contributor.githubUsername,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('(409)')) {
+          console.error(`\n  Username "${username}" is already registered.\n  If this is you, your config may be missing.`);
+        } else {
+          console.error(`\n  Registration failed: ${msg}`);
+        }
+        process.exit(1);
+      }
+
+      console.log(`\n  Registered as @${username}!`);
+      if (taskBudget === undefined) {
+        console.log(`  No budget set — the worker will run until you stop it.`);
+        console.log(`  Tip: run 'tah contributor budget add <n>' to set a task limit.\n`);
+      } else {
+        console.log(`  Budget: ${taskBudget} task${taskBudget === 1 ? '' : 's'}.\n`);
+      }
+      console.log(`  Run 'tah start' to begin contributing.\n`);
+    });
 
   cmd
     .command('profile')
@@ -130,6 +223,28 @@ export function contributorCommand(): Command {
         console.log(`${username}${langs}${tasks}${c.totalTokensDonated.toLocaleString('en-US')}`);
       }
     });
+
+  const budgetCmd = new Command('budget').description('Manage your task budget');
+
+  budgetCmd
+    .command('add <n>')
+    .description('Add N tasks to your budget')
+    .action(async (n: string) => {
+      const count = parseInt(n, 10);
+      if (!count || count < 1) {
+        console.error('Please provide a positive number of tasks. Example: tah contributor budget add 5');
+        process.exit(1);
+      }
+
+      const config = loadConfig();
+      requireAuth(config);
+      const api = new TahApiClient(config.coordinatorUrl, config.authToken);
+
+      const result = await api.post<{ taskBudget: number }>('/contributors/me/budget', { add: count });
+      console.log(`Budget updated: ${result.taskBudget} task${result.taskBudget === 1 ? '' : 's'} remaining.`);
+    });
+
+  cmd.addCommand(budgetCmd);
 
   return cmd;
 }

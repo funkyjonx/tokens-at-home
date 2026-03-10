@@ -85,8 +85,13 @@ export function taskRoutes(db: Db) {
       )
       .get();
 
-    // 2. No queued task — try auto-matching
+    // 2. No queued task — check budget before auto-matching
     if (!task) {
+      // If budget is exhausted (0), signal the worker
+      if (contributor.taskBudget === 0) {
+        return c.json({ budgetExhausted: true });
+      }
+
       const match = await findMatchForContributor(db, contributor.id);
       if (match) {
         // Wrap insert + issue update in a transaction and re-check availability
@@ -114,6 +119,12 @@ export function taskRoutes(db: Db) {
           tx.update(issues)
             .set({ status: 'assigned', updatedAt: now })
             .where(eq(issues.id, match.issueId))
+            .run();
+
+          // Decrement budget atomically using SQL expression (avoids stale-read race)
+          tx.update(contributors)
+            .set({ taskBudget: sql`task_budget - 1` })
+            .where(and(eq(contributors.id, contributor.id), sql`task_budget IS NOT NULL AND task_budget > 0`))
             .run();
 
           return true;

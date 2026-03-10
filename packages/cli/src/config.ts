@@ -31,7 +31,7 @@ export function saveConfig(config: CliConfig): void {
 
 export function requireAuth(config: CliConfig): asserts config is CliConfig & { authToken: string; contributorId: string } {
   if (!config.authToken || !config.contributorId) {
-    console.error('Not registered. Run `tah start` to get started.');
+    console.error('Not registered. Run `tah contributor register` first.');
     process.exit(1);
   }
 }

@@ -64,12 +64,14 @@ export async function startWorker(configPath?: string) {
   await client.setAvailable(true);
 
   let emptyPolls = 0;
+  let budgetExhausted = false;
 
   while (running) {
     try {
       const assignment = await client.getNextTask();
 
       if (!assignment) {
+        budgetExhausted = false;
         emptyPolls++;
         if (emptyPolls % 5 === 0) {
           console.log(`[worker] Waiting for tasks... (${emptyPolls} polls)`);
@@ -78,6 +80,16 @@ export async function startWorker(configPath?: string) {
         continue;
       }
 
+      if ('budgetExhausted' in assignment) {
+        if (!budgetExhausted) {
+          console.log("[worker] Task budget exhausted. Run 'tah contributor budget add <n>' to contribute more.");
+          budgetExhausted = true;
+        }
+        await sleep(config.pollIntervalMs ?? POLL_INTERVAL_MS);
+        continue;
+      }
+
+      budgetExhausted = false;
       emptyPolls = 0;
 
       const { task, issue, project } = assignment;

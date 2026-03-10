@@ -65,6 +65,7 @@ export interface Contributor {
   maxComplexity: IssueComplexity;
   trustScore: number;
   available: boolean;
+  taskBudget: number | null;  // null = unlimited
   createdAt: string;
 }
 
