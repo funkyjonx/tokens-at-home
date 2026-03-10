@@ -688,15 +688,24 @@ export function uiRoutes(db: Db) {
 
       <div class="card">
         <h2 style="margin-top:0;">Step 4: Register as a contributor</h2>
-        <p>Create your contributor profile on the coordinator.</p>
+        <p>Create your contributor profile. You'll be prompted for your GitHub username, languages, and an optional task budget.</p>
         <pre><code>tah contributor register</code></pre>
         <p style="margin-top:0.75rem; color:var(--text-muted); font-size:0.9rem;">
-          This links your GitHub username to your contributor account and generates an auth token stored in <code>~/.tah/config.json</code>.
+          Your auth token is saved to <code>~/.tokens-at-home/config.json</code>.
         </p>
       </div>
 
       <div class="card">
-        <h2 style="margin-top:0;">Step 5: Start contributing</h2>
+        <h2 style="margin-top:0;">Step 5: Set a task budget (optional)</h2>
+        <p>Limit how many issues the worker will pick up before pausing for your review. Skip this if you want it to run indefinitely.</p>
+        <pre><code>tah contributor budget add 5</code></pre>
+        <p style="margin-top:0.75rem; color:var(--text-muted); font-size:0.9rem;">
+          When the budget hits zero, the current task completes and the worker pauses. Run this command again to continue.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Step 6: Start contributing</h2>
         <p>Run the worker. It will poll for available issues, clone repos, invoke Claude, and submit PRs automatically.</p>
         <pre><code>tah start</code></pre>
         <p style="margin-top:0.75rem; color:var(--text-muted); font-size:0.9rem;">
