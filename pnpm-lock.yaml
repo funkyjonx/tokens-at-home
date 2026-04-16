@@ -57,7 +57,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^1.19.10
-        version: 1.19.10(hono@4.12.5)
+        version: 1.19.10(hono@4.12.14)
       '@tah/shared':
         specifier: workspace:*
         version: link:../shared
@@ -68,8 +68,8 @@ importers:
         specifier: ^0.45.1
         version: 0.45.1(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)
       hono:
-        specifier: ^4.12.4
-        version: 4.12.5
+        specifier: ^4.12.14
+        version: 4.12.14
       jose:
         specifier: ^5.9.0
         version: 5.10.0
@@ -912,8 +912,8 @@ packages:
   github-from-package@0.0.0:
     resolution: {integrity: sha512-SyHy3T1v2NUXn29OsWdxmK6RwHD+vkj3v8en8AOBZ1wBQ/hCAQ5bAQTD02kW4W9tUp/3Qh6J8r9EvntiyCmOOw==}
 
-  hono@4.12.5:
-    resolution: {integrity: sha512-3qq+FUBtlTHhtYxbxheZgY8NIFnkkC/MR8u5TTsr7YZ3wixryQ3cCwn3iZbg8p8B88iDBBAYSfZDS75t8MN7Vg==}
+  hono@4.12.14:
+    resolution: {integrity: sha512-am5zfg3yu6sqn5yjKBNqhnTX7Cv+m00ox+7jbaKkrLMRJ4rAdldd1xPd/JzbBWspqaQv6RSTrgFN95EsfhC+7w==}
     engines: {node: '>=16.9.0'}
 
   ieee754@1.2.1:
@@ -1448,9 +1448,9 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@hono/node-server@1.19.10(hono@4.12.5)':
+  '@hono/node-server@1.19.10(hono@4.12.14)':
     dependencies:
-      hono: 4.12.5
+      hono: 4.12.14
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -1784,7 +1784,7 @@ snapshots:
 
   github-from-package@0.0.0: {}
 
-  hono@4.12.5: {}
+  hono@4.12.14: {}
 
   ieee754@1.2.1: {}
 
